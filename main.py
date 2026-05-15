@@ -72,31 +72,27 @@ def run_cli_mode(args):
     print("=" * 60)
     print()
 
-    # TODO: 실제 구현 시 Controller 초기화 및 실행
-    # config = Config()
-    # config.cycle_seconds = args.cycle
-    # config.analysis_mode = args.mode
-    #
-    # controller = EmotionController(config)
-    # controller.initialize()
-    # controller.start()
-    #
-    # try:
-    #     while controller.is_running:
-    #         time.sleep(0.1)
-    # except KeyboardInterrupt:
-    #     pass
-    # finally:
-    #     controller.stop()
+    from config import Config
+    from controller import EmotionController
 
-    print("[INFO] CLI 모드 준비 완료. 모듈 구현 후 동작합니다.")
-    print("[INFO] UI 모드를 사용하려면: streamlit run ui/app.py")
+    config = Config()
+    config.cycle_seconds = max(5, min(20, args.cycle))
+    config.analysis_mode = args.mode
 
-    # 임시: 대기 루프 (구현 전)
+    controller = EmotionController(config)
+    if not controller.initialize():
+        print("[ERROR] 초기화 실패. 사용 가능한 장치를 확인하세요.")
+        sys.exit(1)
+
+    controller.start()
+
     try:
-        while True:
-            time.sleep(1)
+        while controller.state.is_running:
+            time.sleep(0.1)
     except KeyboardInterrupt:
+        pass
+    finally:
+        controller.cleanup()
         print("\n[INFO] 프로그램을 종료합니다.")
 
 
