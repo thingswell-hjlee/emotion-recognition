@@ -51,9 +51,15 @@ streamlit run ui/app.py
 ### 방법 3: 전체 기능 설치
 
 ```powershell
-# DeepFace, librosa, TensorFlow 등 전체 설치
+# DeepFace, TensorFlow 포함 (표정 분석 활성화)
 pip install -r requirements.txt
+
+# 음성 분석 추가 (full mode용, 선택적)
+pip install librosa==0.10.1 sounddevice==0.4.7
 ```
+
+> 💡 `librosa`와 `sounddevice`는 full mode 음성 분석에만 필요합니다.
+> 미설치 시에도 표정 분석과 UI는 정상 동작합니다.
 
 ## 실행 모드
 
@@ -61,10 +67,13 @@ pip install -r requirements.txt
 |------|------|------------|
 | **minimal** (기본) | 카메라+UI+더미 분석, 첫 실행 권장 | requirements-minimal.txt |
 | face | 웹캠 표정 분석 (DeepFace) | requirements.txt |
-| voice | 마이크 음성 분석 (librosa) | requirements.txt |
-| full | 전체 기능 | requirements.txt |
+| voice | 마이크 음성 분석 (librosa) | requirements.txt + `pip install librosa sounddevice` |
+| full | 전체 기능 | requirements.txt + `pip install librosa sounddevice` |
 
 > 🟢 **초기 기본값은 minimal mode**입니다. 첫 실행 성공 후 UI에서 모드를 변경할 수 있습니다.
+>
+> ⚠️ **full mode 음성 분석**은 `librosa`와 `sounddevice`가 설치되어야 활성화됩니다.
+> 미설치 시 음성 분석만 비활성화되고 나머지 기능은 정상 동작합니다.
 
 ## 주요 기능
 
@@ -100,8 +109,13 @@ pip install -r requirements.txt
 
 ## 첫 실행 시 참고
 
-- DeepFace 모델은 face/full 모드 첫 실행 시 자동 다운로드됩니다 (~100MB)
-- minimal 모드에서는 인터넷 연결이 필요하지 않습니다
+- **Python 3.11 권장**: 3.12/3.13은 TensorFlow/DeepFace 호환 문제 있음
+- **minimal mode**: 인터넷 연결 불필요, `requirements-minimal.txt`만으로 실행 가능
+- **DeepFace (선택적)**: `pip install -r requirements.txt` 설치 후 face/full 모드 사용 가능
+  - 첫 실행 시 감정 분석 모델 자동 다운로드 (~100MB, 인터넷 필요)
+  - 모델 다운로드 실패 시 더미 모드로 자동 폴백
+- **음성 분석 (선택적)**: `pip install librosa sounddevice` 추가 설치 후 voice/full 모드 사용
+  - 미설치 시 음성 분석만 비활성화, 나머지 기능 정상 동작
 - Windows 카메라/마이크 권한: 설정 > 개인 정보 > 카메라/마이크 허용 필요
 
 ## 프로젝트 구조

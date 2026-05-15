@@ -35,6 +35,20 @@ pip install -r requirements-minimal.txt
 streamlit run ui/app.py
 ```
 
+### 추가 기능 설치 (선택적)
+
+```powershell
+# 표정 분석 (face mode, full mode) - DeepFace + TensorFlow
+pip install -r requirements.txt
+
+# 음성 분석 (voice mode, full mode) - librosa + sounddevice
+pip install librosa==0.10.1 sounddevice==0.4.7
+```
+
+> **참고**: `librosa`와 `sounddevice`는 requirements.txt에 포함되어 있지만,
+> 설치 실패하더라도 표정 분석과 UI는 정상 동작합니다.
+> full mode에서 음성 분석이 비활성화되면 "sounddevice 미설치" 메시지가 표시됩니다.
+
 ---
 
 ## 3. Windows 카메라 권한 설정
