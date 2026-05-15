@@ -1,118 +1,126 @@
 # Multimodal Emotion State Monitor
 
-노트북의 웹캠과 마이크를 통해 사용자의 얼굴 표정과 음성을 분석하여 감정 상태를 인식하고,
-LSTM 기반 예측 및 음성 안내를 제공하는 로컬 실행 프로그램입니다.
+노트북의 웹캠과 마이크를 통해 감정 상태를 인식하고, LSTM 예측 및 음성 안내를 제공하는 **로컬 실행** 프로그램입니다.
+
+> ⚠️ **개인정보 보호**: 모든 영상/음성은 로컬 메모리에서만 처리되며, 저장·전송되지 않습니다.
+
+## 지원 환경
+
+| 항목 | 요구사항 |
+|------|----------|
+| OS | Windows 10/11 (LG gram 등 노트북 포함) |
+| Python | **3.11 권장** (3.9~3.11 지원) |
+| GPU | 불필요 (Intel Arc Graphics 환경에서도 CPU 모드 기본 실행) |
+| 카메라 | 내장 웹캠 또는 USB 웹캠 |
+| 마이크 | 내장 마이크 또는 외부 마이크 |
+
+> ⚠️ Python 3.12/3.13은 TensorFlow/DeepFace 호환 문제로 권장하지 않습니다.
+
+## Quick Start (Windows 11 PowerShell)
+
+### 방법 1: 배치 파일 사용 (가장 쉬움)
+
+```powershell
+# 프로젝트 폴더로 이동
+cd C:\Projects\emotion-recognition
+
+# 1. 설치 (최초 1회)
+.\setup_windows.bat
+
+# 2. 실행
+.\run_windows.bat
+```
+
+### 방법 2: 수동 설치
+
+```powershell
+cd C:\Projects\emotion-recognition
+
+# 가상환경 생성 및 활성화
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# pip 업그레이드 + 최소 패키지 설치
+python -m pip install --upgrade pip
+pip install -r requirements-minimal.txt
+
+# 실행 (브라우저에서 http://localhost:8501 열림)
+streamlit run ui/app.py
+```
+
+### 방법 3: 전체 기능 설치
+
+```powershell
+# DeepFace, librosa, TensorFlow 등 전체 설치
+pip install -r requirements.txt
+```
+
+## 실행 모드
+
+| 모드 | 설명 | 필요 패키지 |
+|------|------|------------|
+| **minimal** (기본) | 카메라+UI+더미 분석, 첫 실행 권장 | requirements-minimal.txt |
+| face | 웹캠 표정 분석 (DeepFace) | requirements.txt |
+| voice | 마이크 음성 분석 (librosa) | requirements.txt |
+| full | 전체 기능 | requirements.txt |
+
+> 🟢 **초기 기본값은 minimal mode**입니다. 첫 실행 성공 후 UI에서 모드를 변경할 수 있습니다.
 
 ## 주요 기능
 
-- **표정 감정 분석**: 웹캠으로 얼굴을 감지하고 9가지 감정으로 분류
-- **음성 감정 분석**: 마이크 음성의 톤, 에너지 등을 분석하여 감정 분류
-- **멀티모달 통합**: 표정 + 음성 결과를 가중 평균으로 통합
-- **주기적 평균 계산**: 5~20초 주기(기본 10초)로 감정 평균 산출
-- **LSTM 감정 예측**: 시계열 데이터 기반 다음 감정 상태 예측
-- **감정 변화 판단**: 평균값과 예측값을 비교하여 변화 방향 제공
-- **음성 안내**: 감정 상태를 짧은 문장으로 음성 출력
-- **설정 UI**: Streamlit 기반 실시간 모니터링 및 설정 조정
+- **표정 감정 분석**: 9가지 감정 분류 (DeepFace + 더미 폴백)
+- **음성 감정 분석**: 음성 톤/에너지 기반 분류
+- **멀티모달 통합**: 표정 60% + 음성 40% 가중 평균
+- **LSTM 감정 예측**: 시계열 기반 예측 (모델 없으면 이동평균 폴백)
+- **음성 안내**: pyttsx3 TTS (기본 OFF, 선택적 활성화)
+- **Streamlit UI**: 설정, 제어, 결과 표시
 
-## 감정 분류 체계
+## 개인정보 보호
 
-| 감정 | 설명 |
-|------|------|
-| neutral | 무표정 / 중립 |
-| happy | 행복 / 기쁨 |
-| sad | 슬픔 |
-| angry | 분노 |
-| surprised | 놀람 |
-| fearful | 공포 |
-| disgusted | 혐오 |
-| stressed | 스트레스 |
-| calm | 평온 |
+- ❌ 웹캠 영상 저장 금지
+- ❌ 얼굴 이미지 저장 금지
+- ❌ 원본 음성 저장 금지
+- ❌ 외부 서버 전송 금지
+- ✅ 로컬 메모리 처리만 수행
+- ✅ 감정 점수(숫자)만 로그 저장 가능
 
-## 빠른 시작
+## Intel Arc Graphics 대응
 
-> **지원 Python 버전**: 3.9, 3.10, 3.11 (3.12 이상은 tensorflow/mediapipe 호환 문제로 권장하지 않음)
+- GPU 가속에 의존하지 않음 (CPU 모드 기본)
+- TensorFlow GPU 경고가 출력되어도 앱은 정상 동작
+- `config.py`에서 `force_cpu = True`로 설정됨
 
-```bash
-# 1. 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+## 안정성 설계
 
-# 2. 패키지 설치
-pip install -r requirements.txt
+- 모든 모듈에 try/except 적용 → 개별 모듈 실패해도 앱 계속 실행
+- DeepFace 실패 → OpenCV Haar → 더미 neutral 반환 (3단계 폴백)
+- LSTM 모델 파일 없음 → 이동평균 예측으로 폴백
+- pyttsx3 실패 → 음성 안내만 비활성화 (텍스트 안내 유지)
+- 카메라/마이크 접근 실패 → UI에 에러 표시 후 다른 기능 계속 실행
 
-# 3. 실행 (UI 모드) - 프로젝트 루트 디렉토리에서 실행
-cd emotion-recognition
-streamlit run ui/app.py
+## 첫 실행 시 참고
 
-# 4. CLI 모드 (UI 없이 콘솔 실행)
-python main.py --no-ui
-```
+- DeepFace 모델은 face/full 모드 첫 실행 시 자동 다운로드됩니다 (~100MB)
+- minimal 모드에서는 인터넷 연결이 필요하지 않습니다
+- Windows 카메라/마이크 권한: 설정 > 개인 정보 > 카메라/마이크 허용 필요
 
 ## 프로젝트 구조
 
 ```
 emotion-recognition/
-├── main.py                  # 엔트리포인트 (python main.py --no-ui)
-├── config.py                # 전역 설정
+├── main.py                  # CLI 엔트리포인트
+├── config.py                # 전역 설정 (실행 모드 포함)
 ├── controller.py            # 파이프라인 오케스트레이터
 ├── modules/                 # 핵심 모듈
-│   ├── webcam.py            # 웹캠 캡처 + 얼굴 감지
-│   ├── face_expression.py   # 표정 감정 분류
-│   ├── microphone.py        # 마이크 오디오 수집
-│   ├── voice_emotion.py     # 음성 감정 분류
-│   ├── emotion_integrator.py # 멀티모달 통합
-│   ├── emotion_averager.py  # 주기별 평균 계산
-│   ├── lstm_predictor.py    # LSTM 예측
-│   ├── emotion_comparator.py # 평균 vs 예측 비교
-│   └── voice_feedback.py    # 음성 안내 (TTS)
-├── ui/
-│   └── app.py               # Streamlit UI (streamlit run ui/app.py)
-├── models/                  # 학습된 모델 파일
-├── utils/                   # 유틸리티 (logger, timer, data_types)
-├── requirements.txt         # 패키지 의존성
-├── requirements.md          # 요구사항 문서
-├── architecture.md          # 아키텍처 문서
-├── setup-guide.md           # 설치 가이드
-├── privacy-notice.md        # 개인정보 안내
-└── README.md
+├── ui/app.py                # Streamlit UI
+├── utils/                   # 유틸리티
+├── models/                  # 모델 파일 (자동 생성)
+├── logs/                    # 로그 파일 (자동 생성)
+├── requirements.txt         # 전체 기능 패키지
+├── requirements-minimal.txt # 최소 안정 패키지
+├── setup_windows.bat        # Windows 설치 스크립트
+└── run_windows.bat          # Windows 실행 스크립트
 ```
-
-## 기술 스택
-
-| 분류 | 기술 |
-|------|------|
-| 언어 | Python 3.9~3.11 |
-| 영상처리 | OpenCV |
-| 표정 분석 | DeepFace / MediaPipe |
-| 음성 처리 | librosa |
-| 오디오 캡처 | sounddevice / PyAudio |
-| 음성 합성 | pyttsx3 |
-| 딥러닝 | TensorFlow (LSTM) |
-| UI | Streamlit |
-
-## 개인정보 보호
-
-- 모든 처리는 로컬 PC에서만 수행합니다.
-- 웹캠 영상과 음성은 저장하지 않습니다.
-- 외부 서버로 데이터를 전송하지 않습니다.
-- 사용자가 시작 버튼을 누른 후에만 분석합니다.
-
-자세한 내용은 [privacy-notice.md](privacy-notice.md)를 참고하세요.
-
-## 문서
-
-| 문서 | 설명 |
-|------|------|
-| [requirements.md](requirements.md) | 기능/비기능 요구사항 |
-| [architecture.md](architecture.md) | 시스템 아키텍처 |
-| [ui-design.md](ui-design.md) | UI 설계 |
-| [emotion-analysis-design.md](emotion-analysis-design.md) | 표정 분석 설계 |
-| [voice-analysis-design.md](voice-analysis-design.md) | 음성 분석 설계 |
-| [lstm-prediction-design.md](lstm-prediction-design.md) | LSTM 예측 설계 |
-| [data-structure.md](data-structure.md) | 데이터 구조 설계 |
-| [task-list.md](task-list.md) | 구현 작업 목록 |
-| [setup-guide.md](setup-guide.md) | 설치 가이드 |
-| [privacy-notice.md](privacy-notice.md) | 개인정보 안내 |
 
 ## 면책 사항
 
