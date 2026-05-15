@@ -30,6 +30,8 @@ LSTM 기반 예측 및 음성 안내를 제공하는 로컬 실행 프로그램�
 
 ## 빠른 시작
 
+> **지원 Python 버전**: 3.9, 3.10, 3.11 (3.12 이상은 tensorflow/mediapipe 호환 문제로 권장하지 않음)
+
 ```bash
 # 1. 가상환경 생성 및 활성화
 python -m venv venv
@@ -38,15 +40,19 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 2. 패키지 설치
 pip install -r requirements.txt
 
-# 3. 실행 (UI 모드)
+# 3. 실행 (UI 모드) - 프로젝트 루트 디렉토리에서 실행
+cd emotion-recognition
 streamlit run ui/app.py
+
+# 4. CLI 모드 (UI 없이 콘솔 실행)
+python main.py --no-ui
 ```
 
 ## 프로젝트 구조
 
 ```
 emotion-recognition/
-├── main.py                  # 엔트리포인트
+├── main.py                  # 엔트리포인트 (python main.py --no-ui)
 ├── config.py                # 전역 설정
 ├── controller.py            # 파이프라인 오케스트레이터
 ├── modules/                 # 핵심 모듈
@@ -60,22 +66,22 @@ emotion-recognition/
 │   ├── emotion_comparator.py # 평균 vs 예측 비교
 │   └── voice_feedback.py    # 음성 안내 (TTS)
 ├── ui/
-│   └── app.py               # Streamlit UI
-├── models/                  # 학습된 모델
-├── utils/                   # 유틸리티
+│   └── app.py               # Streamlit UI (streamlit run ui/app.py)
+├── models/                  # 학습된 모델 파일
+├── utils/                   # 유틸리티 (logger, timer, data_types)
 ├── requirements.txt         # 패키지 의존성
-└── docs/                    # 문서
-    ├── requirements.md
-    ├── architecture.md
-    ├── ui-design.md
-    └── ...
+├── requirements.md          # 요구사항 문서
+├── architecture.md          # 아키텍처 문서
+├── setup-guide.md           # 설치 가이드
+├── privacy-notice.md        # 개인정보 안내
+└── README.md
 ```
 
 ## 기술 스택
 
 | 분류 | 기술 |
 |------|------|
-| 언어 | Python 3.9+ |
+| 언어 | Python 3.9~3.11 |
 | 영상처리 | OpenCV |
 | 표정 분석 | DeepFace / MediaPipe |
 | 음성 처리 | librosa |

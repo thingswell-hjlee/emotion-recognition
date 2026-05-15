@@ -11,7 +11,8 @@
 - GPU: 불필요 (있으면 가속 활용)
 
 ### 소프트웨어
-- Python 3.9 이상 (3.10~3.11 권장)
+- **Python 3.9, 3.10, 또는 3.11** (3.11 권장)
+  - ⚠️ Python 3.12/3.13은 tensorflow, mediapipe 호환 문제로 권장하지 않음
 - pip (Python 패키지 관리자)
 - Git (선택사항)
 
@@ -19,7 +20,7 @@
 
 | OS | 추가 설치/설정 |
 |----|---------------|
-| Windows 10/11 | Visual C++ Redistributable, PyAudio 설치 시 wheel 사용 |
+| Windows 10/11 | Visual C++ Redistributable, 설정 > 개인 정보 > 카메라/마이크 접근 허용 |
 | macOS 12+ | 시스템 환경설정 > 보안 > 카메라/마이크 접근 허용, `portaudio` 설치 |
 | Ubuntu 20.04+ | `libgl1-mesa-glx`, `libglib2.0-0`, `portaudio19-dev` |
 
@@ -74,15 +75,18 @@ pip install pipwin
 pipwin install pyaudio
 ```
 
-### Step 4: 모델 준비
+### Step 4: 모델 준비 (선택사항)
+
+DeepFace 모델은 최초 실행 시 자동으로 다운로드됩니다.  
+인터넷 없는 환경에서 사용하려면 미리 다운로드하세요:
 
 ```bash
-# LSTM 초기 모델 학습 (최초 1회)
-python scripts/train_lstm.py
-
-# DeepFace 모델 다운로드 (최초 실행 시 자동)
+# DeepFace 모델 다운로드 (최초 실행 시 자동, 수동 시)
 python -c "from deepface import DeepFace; print('Model ready')"
 ```
+
+> LSTM 모델은 프로그램 실행 시 자동으로 초기화됩니다.  
+> 별도의 학습 스크립트 실행은 필요하지 않습니다.
 
 ---
 
@@ -90,7 +94,10 @@ python -c "from deepface import DeepFace; print('Model ready')"
 
 ### 기본 실행 (Streamlit UI)
 
+> ⚠️ 반드시 프로젝트 루트 디렉토리(`emotion-recognition/`)에서 실행하세요.
+
 ```bash
+cd emotion-recognition
 streamlit run ui/app.py
 ```
 
@@ -99,13 +106,14 @@ streamlit run ui/app.py
 ### CLI 실행 (UI 없이)
 
 ```bash
+cd emotion-recognition
 python main.py --no-ui
 ```
 
-### 설정 파일 지정
+### 분석 모드 지정
 
 ```bash
-python main.py --config config.json
+python main.py --no-ui --mode face_only --cycle 10
 ```
 
 ---
@@ -139,23 +147,42 @@ python main.py --config config.json
 ### 카메라 관련
 
 **증상**: "카메라를 열 수 없습니다"
-```
-해결:
-1. 다른 프로그램(Zoom, Teams)이 카메라 점유 중인지 확인
-2. config.py에서 camera_device_id를 1로 변경
-3. macOS: 시스템 환경설정 > 보안 > 카메라 허용
-4. Linux: sudo usermod -aG video $USER
-```
+
+**Windows 10/11:**
+1. **설정 > 개인 정보 및 보안 > 카메라** 에서 "앱에서 카메라에 액세스하도록 허용" 활성화
+2. 같은 페이지에서 "데스크톱 앱의 카메라 액세스 허용" 활성화
+3. 다른 프로그램(Zoom, Teams, OBS)이 카메라를 점유 중인지 확인
+4. `config.py`에서 `camera_device_id`를 `1`로 변경해 보기
+5. 장치 관리자에서 카메라 드라이버 정상 여부 확인
+
+**macOS:**
+1. 시스템 환경설정 > 보안 및 개인 정보 보호 > 카메라 > 해당 앱(터미널/IDE) 허용
+2. 앱 재시작
+
+**Linux:**
+1. `ls -la /dev/video*` 로 장치 확인
+2. `sudo usermod -aG video $USER` 후 재로그인
 
 ### 마이크 관련
 
 **증상**: "마이크를 열 수 없습니다"
-```
-해결:
-1. 시스템 설정에서 마이크 접근 권한 확인
-2. 다른 프로그램의 마이크 점유 확인
-3. pyaudio 재설치: pip install --force-reinstall pyaudio
-```
+
+**Windows 10/11:**
+1. **설정 > 개인 정보 및 보안 > 마이크** 에서 "앱에서 마이크에 액세스하도록 허용" 활성화
+2. 같은 페이지에서 "데스크톱 앱의 마이크 액세스 허용" 활성화
+3. **설정 > 시스템 > 소리** 에서 입력 장치 선택 및 테스트
+4. 다른 프로그램의 마이크 점유 확인
+
+**macOS:**
+1. 시스템 환경설정 > 보안 및 개인 정보 보호 > 마이크 > 해당 앱 허용
+
+**Linux:**
+1. `arecord -l` 로 마이크 장치 목록 확인
+2. `pulseaudio` 또는 `pipewire` 설정 확인
+
+**공통:**
+- pyaudio 재설치: `pip install --force-reinstall pyaudio`
+- sounddevice 재설치: `pip install --force-reinstall sounddevice`
 
 ### TensorFlow 관련
 
