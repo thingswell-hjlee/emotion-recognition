@@ -17,7 +17,7 @@ Multimodal Emotion State Monitor의 모든 설정값을 관리합니다.
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Optional, Tuple
 
 
 # === 실행 모드 ===
@@ -95,9 +95,34 @@ class Config:
     audio_sample_rate: int = 16000
     audio_channels: int = 1
     audio_chunk_size: int = 1024
-    silence_threshold: float = 0.01
-    silence_duration: float = 2.0
     audio_enabled: bool = False
+    audio_device_id: Optional[int] = None  # None = system default
+
+    # --- Voice Activity Detection (VAD) 설정 ---
+    # Windows 11 노트북 내장 마이크 기준 보수적 설정
+    silence_threshold: float = 0.015      # RMS 기준 무음 판단 (높을수록 보수적)
+    peak_threshold: float = 0.05          # peak amplitude 기준
+    silence_duration: float = 2.0         # 무음 지속 시간 (초)
+    min_valid_voice_seconds: float = 2.0  # 최소 유효 발화 시간
+    min_voice_ratio: float = 0.20         # 주기 내 최소 발화 비율 (20%)
+    vad_zcr_threshold: float = 0.08       # Zero Crossing Rate 기준
+    vad_min_consecutive_frames: int = 3   # 연속 유효 프레임 수
+
+    # --- 음성 감정 Confidence 설정 ---
+    voice_confidence_strong: float = 0.75    # >= 이면 strong result
+    voice_confidence_usable: float = 0.60    # >= 이면 usable result
+    voice_confidence_low: float = 0.40       # >= 이면 low_confidence
+    # < voice_confidence_low 이면 discard
+
+    # --- 음성 감정 가중치 (Full mode) ---
+    # voice heuristic 모드에서는 voice_weight를 낮게 설정
+    voice_weight_strong: float = 0.30       # strong confidence 시
+    voice_weight_usable: float = 0.15       # usable confidence 시
+    voice_weight_low: float = 0.05          # low confidence 시 (거의 무시)
+    voice_weight_invalid: float = 0.0       # 무음/데이터 부족 시
+
+    # --- 음성 분류기 모드 ---
+    voice_classifier_mode: str = "heuristic"  # heuristic / trained / dummy
 
     # --- 분석 설정 ---
     cycle_seconds: int = 10

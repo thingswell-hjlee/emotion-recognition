@@ -1,203 +1,192 @@
 """
-modules/voice_emotion.py - 음성 감정 분류 모듈
-librosa로 음성 특징을 추출하고 감정을 분류합니다.
+modules/voice_emotion.py - 음성 감정 분류 모듈 (재설계)
+
+인터페이스 패턴:
+- BaseVoiceEmotionClassifier (추상 인터페이스)
+- HeuristicVoiceEmotionClassifier (현재 기본, 규칙 기반)
+- TrainedVoiceEmotionClassifier (향후 학습 모델 교체용)
+- DummyVoiceEmotionClassifier (테스트용)
+
+MVP 정책:
+- happy, fearful, surprised는 학습 모델 없이는 기본 억제
+- 출력 제한: neutral, calm, stressed, angry_low_confidence, sad_low_confidence
+- 무음/데이터 부족 시 결과 생성 금지
+- 랜덤 결과 사용 금지
 """
 
 import numpy as np
+from abc import ABC, abstractmethod
 from typing import Dict, Optional
-import os
+from dataclasses import dataclass
 import sys
+import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from config import EMOTIONS, Config, DEFAULT_CONFIG
 from utils.data_types import EmotionScores
+from modules.voice_features import VoiceFeatures
 
 
-class VoiceEmotionClassifier:
-    """음성 특징 기반 감정 분류"""
+# === 분류 결과 상태 ===
+VOICE_RESULT_OK = "EMOTION_CLASSIFIED"
+VOICE_RESULT_LOW_CONFIDENCE = "LOW_CONFIDENCE"
+VOICE_RESULT_SILENCE = "SILENCE_DETECTED"
+VOICE_RESULT_INSUFFICIENT = "INSUFFICIENT_VOICE_DATA"
+VOICE_RESULT_ERROR = "CLASSIFICATION_ERROR"
+VOICE_RESULT_DISABLED = "MODULE_DISABLED"
+
+
+@dataclass
+class VoiceEmotionResult:
+    """음성 감정 분류 결과 (상세)"""
+    emotion: Optional[EmotionScores]
+    status: str                    # EMOTION_CLASSIFIED / LOW_CONFIDENCE / etc.
+    confidence_tier: str = "low"   # strong / usable / low / discard
+    classifier_mode: str = "heuristic"
+    reason: str = ""               # 판단 근거 설명
+
+
+# === Base Interface ===
+
+class BaseVoiceEmotionClassifier(ABC):
+    """음성 감정 분류기 추상 인터페이스"""
+
+    @abstractmethod
+    def initialize(self) -> bool:
+        pass
+
+    @abstractmethod
+    def classify(self, features: VoiceFeatures) -> VoiceEmotionResult:
+        """VoiceFeatures를 입력받아 감정을 분류합니다."""
+        pass
+
+    @property
+    @abstractmethod
+    def mode_name(self) -> str:
+        pass
+
+
+# === Heuristic Classifier (MVP 기본) ===
+
+class HeuristicVoiceEmotionClassifier(BaseVoiceEmotionClassifier):
+    """
+    규칙 기반 음성 감정 분류기.
+
+    출력 제한 (학습 모델 없이 신뢰할 수 있는 것만):
+    - neutral: 중간 에너지 + 안정적 피치
+    - calm: 낮은 에너지 + 안정적 피치
+    - stressed: 높은 에너지 + 큰 피치 변동 + 높은 ZCR
+    - angry_low_confidence: 높은 에너지 + 낮은 피치
+    - sad_low_confidence: 낮은 에너지 + 느린 리듬
+
+    happy, fearful, surprised는 학습 모델 없이 억제.
+    """
 
     def __init__(self, config: Config = DEFAULT_CONFIG):
         self.config = config
-        self._model = None
-        self._scaler = None
         self._initialized = False
-        self._librosa = None
 
     def initialize(self) -> bool:
-        """모델 및 라이브러리 로드"""
-        try:
-            import librosa
-            self._librosa = librosa
-        except ImportError:
-            print("[ERROR] librosa가 설치되지 않았습니다: pip install librosa")
-            return False
-
-        # 학습된 모델 로드 시도
-        if os.path.exists(self.config.voice_model_path):
-            try:
-                import joblib
-                data = joblib.load(self.config.voice_model_path)
-                self._model = data.get("clf")
-                self._scaler = data.get("scaler")
-                self._initialized = True
-                return True
-            except Exception as e:
-                print(f"[WARNING] 음성 모델 로드 실패: {e}")
-
-        # 모델 없으면 규칙 기반 분류 사용 (MVP)
         self._initialized = True
         return True
 
-    def classify(self, audio_data: np.ndarray,
-                 sample_rate: int = 16000) -> Optional[EmotionScores]:
-        """
-        오디오 데이터로 감정 분류
+    def classify(self, features: VoiceFeatures) -> VoiceEmotionResult:
+        """규칙 기반 분류"""
+        if not features.is_valid:
+            return VoiceEmotionResult(
+                emotion=None,
+                status=VOICE_RESULT_ERROR,
+                reason=features.error or "Invalid features",
+            )
 
-        Args:
-            audio_data: float32 mono 오디오 신호
-            sample_rate: 샘플레이트 (Hz)
+        # 규칙 기반 판단
+        emotion_label, confidence, reason = self._apply_rules(features)
 
-        Returns:
-            EmotionScores 또는 실패 시 None
-        """
-        if not self._initialized:
-            if not self.initialize():
-                return None
+        # confidence tier 결정
+        tier = self._get_confidence_tier(confidence)
 
-        # 유효성 검증
-        if not self._is_valid_audio(audio_data):
-            return None
+        # EmotionScores 생성
+        scores = self._build_scores(emotion_label, confidence)
 
-        # 특징 추출
-        features = self.extract_features(audio_data, sample_rate)
-        if features is None:
-            return None
-
-        # 분류
-        if self._model is not None:
-            scores = self._model_predict(features)
-        else:
-            scores = self._rule_based_classify(features)
-
-        if scores is None:
-            return None
-
-        dominant = max(scores, key=scores.get)
-        return EmotionScores(
-            scores=scores,
-            dominant=dominant,
-            confidence=scores[dominant],
-            source="voice",
+        return VoiceEmotionResult(
+            emotion=EmotionScores(
+                scores=scores,
+                dominant=emotion_label,
+                confidence=confidence,
+                source="voice_heuristic",
+            ),
+            status=VOICE_RESULT_OK if tier != "discard" else VOICE_RESULT_LOW_CONFIDENCE,
+            confidence_tier=tier,
+            classifier_mode="heuristic",
+            reason=reason,
         )
 
-    def extract_features(self, audio: np.ndarray, sr: int) -> Optional[np.ndarray]:
+    @property
+    def mode_name(self) -> str:
+        return "heuristic baseline"
+
+    def _apply_rules(self, f: VoiceFeatures) -> tuple:
         """
-        음성 특징 벡터 추출 (35차원)
-
-        Features:
-        - MFCC 13계수 × 2 (mean, std) = 26
-        - Mel spectrogram mean = 1
-        - Pitch mean, std = 2
-        - RMS mean, std = 2
-        - ZCR mean = 1
-        - Spectral centroid mean = 1
-        - Spectral bandwidth mean = 1
-        - Tempo = 1
-        Total = 35
+        규칙 기반 감정 판단.
+        Returns: (emotion_label, confidence, reason)
         """
-        try:
-            librosa = self._librosa
-            features = []
+        rms = f.rms_mean
+        pitch = f.pitch_mean
+        pitch_std = f.pitch_std
+        zcr = f.zcr
+        energy_var = f.energy_variation
 
-            # MFCC (26)
-            mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
-            features.extend(np.mean(mfcc, axis=1).tolist())
-            features.extend(np.std(mfcc, axis=1).tolist())
+        # Rule 1: 높은 에너지 + 큰 피치 변동 + 높은 ZCR → stressed
+        if rms > 0.04 and pitch_std > 40 and zcr > 0.08:
+            confidence = min(0.75, 0.50 + rms * 2 + pitch_std * 0.005)
+            return "stressed", confidence, f"high_energy({rms:.3f})+pitch_var({pitch_std:.1f})+zcr({zcr:.3f})"
 
-            # Mel spectrogram energy (1)
-            mel = librosa.feature.melspectrogram(y=audio, sr=sr)
-            features.append(float(np.mean(mel)))
+        # Rule 2: 높은 에너지 + 낮은 피치 → angry (low confidence)
+        if rms > 0.05 and pitch < 150 and energy_var > 0.5:
+            confidence = min(0.60, 0.40 + rms * 2)
+            return "angry", confidence, f"high_energy({rms:.3f})+low_pitch({pitch:.0f})+energy_var({energy_var:.2f})"
 
-            # Pitch (2)
-            pitches, magnitudes = librosa.piptrack(y=audio, sr=sr)
-            pitch_vals = pitches[magnitudes > np.median(magnitudes)]
-            features.append(float(np.mean(pitch_vals)) if len(pitch_vals) > 0 else 0.0)
-            features.append(float(np.std(pitch_vals)) if len(pitch_vals) > 0 else 0.0)
+        # Rule 3: 낮은 에너지 + 느린 리듬 → sad (low confidence)
+        if rms < 0.015 and pitch_std < 15 and energy_var < 0.3:
+            confidence = min(0.55, 0.35 + (0.02 - rms) * 10)
+            return "sad", confidence, f"low_energy({rms:.3f})+stable_pitch({pitch_std:.1f})"
 
-            # RMS energy (2)
-            rms = librosa.feature.rms(y=audio)
-            features.append(float(np.mean(rms)))
-            features.append(float(np.std(rms)))
+        # Rule 4: 낮은 에너지 + 안정적 피치 → calm
+        if rms < 0.025 and pitch_std < 25:
+            confidence = 0.65
+            return "calm", confidence, f"low_energy({rms:.3f})+stable({pitch_std:.1f})"
 
-            # Zero-crossing rate (1)
-            zcr = librosa.feature.zero_crossing_rate(audio)
-            features.append(float(np.mean(zcr)))
+        # Rule 5: 중간 에너지 + 안정적 피치 → neutral (기본)
+        confidence = 0.60
+        return "neutral", confidence, f"default: rms={rms:.3f} pitch={pitch:.0f} std={pitch_std:.1f}"
 
-            # Spectral centroid (1)
-            centroid = librosa.feature.spectral_centroid(y=audio, sr=sr)
-            features.append(float(np.mean(centroid)))
+    def _get_confidence_tier(self, confidence: float) -> str:
+        """confidence 기준으로 tier 결정"""
+        if confidence >= self.config.voice_confidence_strong:
+            return "strong"
+        elif confidence >= self.config.voice_confidence_usable:
+            return "usable"
+        elif confidence >= self.config.voice_confidence_low:
+            return "low"
+        else:
+            return "discard"
 
-            # Spectral bandwidth (1)
-            bandwidth = librosa.feature.spectral_bandwidth(y=audio, sr=sr)
-            features.append(float(np.mean(bandwidth)))
+    def _build_scores(self, dominant: str, confidence: float) -> Dict[str, float]:
+        """감정 점수 분포 생성 (dominant 중심, 나머지는 낮게)"""
+        scores = {e: 0.02 for e in EMOTIONS}
+        scores[dominant] = confidence
 
-            # Tempo (1)
-            tempo, _ = librosa.beat.beat_track(y=audio, sr=sr)
-            features.append(float(np.atleast_1d(tempo)[0]))
-
-            return np.array(features, dtype=np.float32)
-
-        except Exception:
-            return None
-
-    def _model_predict(self, features: np.ndarray) -> Optional[Dict[str, float]]:
-        """학습된 모델로 예측"""
-        try:
-            scaled = self._scaler.transform(features.reshape(1, -1))
-            proba = self._model.predict_proba(scaled)[0]
-            classes = self._model.classes_
-            return dict(zip(classes, proba.tolist()))
-        except Exception:
-            return None
-
-    def _rule_based_classify(self, features: np.ndarray) -> Dict[str, float]:
-        """
-        규칙 기반 간이 분류 (MVP, 모델 없을 때)
-        에너지, 피치, ZCR 등을 기반으로 대략적 분류
-        """
-        # 특징 인덱스: MFCC(0-25), mel(26), pitch_mean(27), pitch_std(28),
-        #             rms_mean(29), rms_std(30), zcr(31), centroid(32), bw(33), tempo(34)
-        rms_mean = features[29] if len(features) > 29 else 0.01
-        pitch_mean = features[27] if len(features) > 27 else 200.0
-        zcr_mean = features[31] if len(features) > 31 else 0.05
-
-        scores = {e: 0.05 for e in EMOTIONS}  # 기본값
-
-        # 에너지 높으면 → angry/happy/surprised
-        if rms_mean > 0.05:
-            scores["angry"] += 0.2
-            scores["happy"] += 0.15
-            scores["surprised"] += 0.1
-        # 에너지 낮으면 → sad/calm/neutral
-        elif rms_mean < 0.01:
-            scores["sad"] += 0.15
-            scores["calm"] += 0.2
-            scores["neutral"] += 0.15
-
-        # 피치 높으면 → happy/surprised/fearful
-        if pitch_mean > 300:
-            scores["happy"] += 0.15
-            scores["surprised"] += 0.15
-            scores["fearful"] += 0.1
-        # 피치 낮으면 → sad/angry
-        elif pitch_mean < 150:
-            scores["sad"] += 0.1
-            scores["angry"] += 0.1
-
-        # ZCR 높으면 → stressed
-        if zcr_mean > 0.1:
-            scores["stressed"] += 0.15
+        # 관련 감정에 약간의 점수 배분
+        related = {
+            "neutral": ["calm"],
+            "calm": ["neutral"],
+            "stressed": ["angry", "fearful"],
+            "angry": ["stressed", "disgusted"],
+            "sad": ["neutral", "calm"],
+        }
+        for rel in related.get(dominant, []):
+            if rel in scores:
+                scores[rel] = max(scores[rel], (1.0 - confidence) * 0.3)
 
         # 정규화
         total = sum(scores.values())
@@ -206,17 +195,52 @@ class VoiceEmotionClassifier:
 
         return scores
 
-    def _is_valid_audio(self, audio: np.ndarray) -> bool:
-        """유효한 음성 데이터인지 검증"""
-        if audio is None or len(audio) == 0:
-            return False
-        if len(audio) < 1600:  # 최소 0.1초 (16kHz 기준)
-            return False
-        rms = np.sqrt(np.mean(audio ** 2))
-        if rms < 0.001:  # 거의 무음
-            return False
+
+# === Dummy Classifier (테스트용) ===
+
+class DummyVoiceEmotionClassifier(BaseVoiceEmotionClassifier):
+    """테스트용 더미 분류기 (항상 neutral 반환, 랜덤 없음)"""
+
+    def initialize(self) -> bool:
         return True
 
+    def classify(self, features: VoiceFeatures) -> VoiceEmotionResult:
+        scores = {e: 0.05 for e in EMOTIONS}
+        scores["neutral"] = 0.60
+        total = sum(scores.values())
+        scores = {k: v / total for k, v in scores.items()}
+
+        return VoiceEmotionResult(
+            emotion=EmotionScores(
+                scores=scores,
+                dominant="neutral",
+                confidence=0.60,
+                source="voice_dummy",
+            ),
+            status=VOICE_RESULT_OK,
+            confidence_tier="usable",
+            classifier_mode="dummy",
+            reason="dummy_test_mode",
+        )
+
     @property
-    def is_ready(self) -> bool:
-        return self._initialized
+    def mode_name(self) -> str:
+        return "dummy test"
+
+
+# === Factory ===
+
+def create_voice_classifier(config: Config = DEFAULT_CONFIG) -> BaseVoiceEmotionClassifier:
+    """설정에 따라 적절한 분류기 인스턴스 생성"""
+    mode = config.voice_classifier_mode
+
+    if mode == "heuristic":
+        classifier = HeuristicVoiceEmotionClassifier(config)
+    elif mode == "dummy":
+        classifier = DummyVoiceEmotionClassifier()
+    else:
+        # trained model은 향후 구현
+        classifier = HeuristicVoiceEmotionClassifier(config)
+
+    classifier.initialize()
+    return classifier
