@@ -53,6 +53,10 @@ class EmotionController:
             confidence_threshold=self.config.confidence_threshold,
         )
 
+        # 새 음성 파이프라인 + 분리된 평균 계산
+        self._voice_pipeline = None
+        self._voice_averager = None
+
         # 타이머
         self._timer = CycleTimer(
             cycle_seconds=self.config.cycle_seconds,
@@ -80,10 +84,11 @@ class EmotionController:
 
         # Averager, Comparator (순수 Python, 실패 없음)
         try:
-            from modules.emotion_averager import EmotionAverager
             from modules.emotion_comparator import EmotionComparator
-            self._averager = EmotionAverager()
+            from modules.voice_averager import VoiceAverager
             self._comparator = EmotionComparator(self.config)
+            # voice_averager는 모든 모드에서 사용 (face 결과도 관리)
+            self._voice_averager = VoiceAverager(self.config)
         except Exception as e:
             self.logger.error(f"기본 모듈 초기화 실패: {e}")
 
@@ -138,33 +143,47 @@ class EmotionController:
             self._face_classifier = None
 
     def _init_voice_modules(self):
-        """음성 모듈 초기화"""
+        """음성 모듈 초기화 (새 파이프라인 사용)"""
+        # 마이크
         try:
             from modules.microphone import MicrophoneCapture
             self._microphone = MicrophoneCapture(self.config)
             if self._microphone.open():
-                self.state.voice_status = "준비 완료"
-                self.logger.info("마이크 초기화 완료")
+                self.state.voice_status = "MIC_READY"
+                device = self._microphone.get_device_info()
+                if device:
+                    self.logger.info(f"[VOICE] MIC_READY device=\"{device.name}\" sr={self.config.audio_sample_rate}")
             else:
-                self.state.voice_status = "마이크 연결 실패"
+                self.state.voice_status = "MIC_ERROR"
                 self._microphone = None
         except ImportError:
             self.state.voice_status = "sounddevice 미설치"
             self._microphone = None
         except Exception as e:
-            self.state.voice_status = f"마이크 오류: {e}"
+            self.state.voice_status = f"MIC_ERROR: {e}"
             self._microphone = None
 
+        # 음성 파이프라인 (VAD + Feature + Classifier 통합)
         try:
-            from modules.voice_emotion import VoiceEmotionClassifier
-            self._voice_classifier = VoiceEmotionClassifier(self.config)
-            self._voice_classifier.initialize()
-        except ImportError:
-            self.logger.warning("librosa 미설치. 음성 분류 비활성화.")
-            self._voice_classifier = None
+            from modules.voice_pipeline import VoicePipeline
+            self._voice_pipeline = VoicePipeline(self.config)
+            self._voice_pipeline.initialize()
+            self.logger.info(f"[VOICE] Pipeline initialized (mode: {self._voice_pipeline.classifier_mode})")
+        except ImportError as e:
+            self.logger.warning(f"음성 파이프라인 초기화 실패 (의존성): {e}")
+            self._voice_pipeline = None
         except Exception as e:
-            self.logger.error(f"음성 분류기 초기화 실패: {e}")
-            self._voice_classifier = None
+            self.logger.error(f"음성 파이프라인 초기화 실패: {e}")
+            self._voice_pipeline = None
+
+        # 분리된 평균 계산기
+        try:
+            from modules.voice_averager import VoiceAverager
+            self._voice_averager = VoiceAverager(self.config)
+        except Exception as e:
+            self.logger.error(f"VoiceAverager 초기화 실패: {e}")
+            from modules.voice_averager import VoiceAverager
+            self._voice_averager = VoiceAverager(self.config)
 
     def _init_lstm(self):
         """LSTM 초기화"""
@@ -293,8 +312,8 @@ class EmotionController:
                 self._microphone.update_cycle(self.config.cycle_seconds)
             except Exception:
                 pass
-        if self._averager:
-            self._averager.reset()
+        if self._voice_averager:
+            self._voice_averager.reset()
         if self._lstm_predictor:
             self._lstm_predictor.reset()
         self._smoother.reset()
@@ -412,8 +431,9 @@ class EmotionController:
                     self.state.current_emotion = display_result
                     self.state.face_status = f"분석 중 ({display_result.dominant} {display_result.confidence:.0%})"
 
-                    if self._averager:
-                        self._averager.add_result(display_result)
+                    # face 결과를 voice_averager에 추가 (분리 평균 계산용)
+                    if self._voice_averager:
+                        self._voice_averager.add_face_result(display_result)
 
                     # 첫 결과 및 주기적 debug 로그
                     if analysis_count == 1 or analysis_count % 5 == 0:
@@ -443,45 +463,61 @@ class EmotionController:
             self.logger.error(f"주기 처리 오류: {e}")
 
     def _process_cycle_end(self):
-        """주기 종료 처리"""
-        # ① 음성 분석
-        if self.config.use_voice and self._microphone and self._voice_classifier:
+        """
+        주기 종료 처리 (새 음성 파이프라인 통합).
+        face/voice 결과를 분리 평균하고, 동적 가중치로 통합합니다.
+        """
+        # ① 음성 파이프라인 실행 (voice/full 모드)
+        if self.config.use_voice and self._microphone and self._voice_pipeline:
             try:
-                if not self._microphone.is_silence():
-                    audio = self._microphone.get_buffer()
-                    voice_result = self._voice_classifier.classify(
-                        audio, self.config.audio_sample_rate
-                    )
-                    if voice_result and self._averager:
-                        self._averager.add_result(voice_result)
-                        self.state.voice_status = "분석 완료"
+                audio = self._microphone.get_buffer()
+                voice_result = self._voice_pipeline.process(audio, self.config.audio_sample_rate)
+
+                # 파이프라인 상태를 state에 저장 (UI 표시용)
+                self.state.voice_pipeline_state = self._voice_pipeline.state
+
+                if voice_result.status in ("EMOTION_CLASSIFIED", "LOW_CONFIDENCE"):
+                    if voice_result.emotion:
+                        self._voice_averager.add_voice_result(voice_result)
+                        self.state.voice_status = f"분석: {voice_result.emotion.dominant} ({voice_result.confidence_tier})"
+                elif voice_result.status == "SILENCE_DETECTED":
+                    self.state.voice_status = "무음"
+                elif voice_result.status == "INSUFFICIENT_VOICE_DATA":
+                    self.state.voice_status = "발화 부족"
                 else:
-                    self.state.voice_status = "음성 미감지"
-            except Exception as e:
-                self.logger.error(f"음성 분석 실패: {e}")
-                self.state.voice_status = "분석 오류"
+                    self.state.voice_status = f"상태: {voice_result.status}"
 
-        # ② 감정 평균
-        avg = None
-        if self._averager:
-            try:
-                avg = self._averager.calculate_average()
-            except Exception as e:
-                self.logger.error(f"평균 계산 실패: {e}")
+                # 파이프라인 로그를 app 로그에 추가
+                for msg in self._voice_pipeline.state.log_messages:
+                    self.state.add_log(msg)
 
-        if avg:
-            self.state.average_emotion = avg
-            self.state.add_log(f"평균: {avg.dominant} ({avg.confidence:.0%})")
+            except Exception as e:
+                self.logger.error(f"음성 파이프라인 실패: {e}")
+                self.state.voice_status = f"오류: {e}"
+
+        # ② 분리된 평균 계산 (face + voice → integrated → final)
+        averages = self._voice_averager.calculate_averages()
+
+        final_avg = averages.final_average
+        if final_avg:
+            self.state.average_emotion = final_avg
+            self.state.add_log(
+                f"[FUSION] face={'✓' if averages.face_average else '✗'} "
+                f"voice={'✓' if averages.voice_average else '✗'} "
+                f"face_w={averages.applied_face_weight:.2f} "
+                f"voice_w={averages.applied_voice_weight:.2f} "
+                f"final={final_avg.dominant}"
+            )
             self.logger.emotion("average", {
-                "dominant": avg.dominant,
-                "confidence": avg.confidence,
-                "scores": avg.scores,
+                "dominant": final_avg.dominant,
+                "confidence": final_avg.confidence,
+                "scores": final_avg.scores,
             })
 
             # ③ LSTM 예측
             if self._lstm_predictor:
                 try:
-                    self._lstm_predictor.add_data_point(avg.scores)
+                    self._lstm_predictor.add_data_point(final_avg.scores)
                     if self._lstm_predictor.is_ready:
                         predicted = self._lstm_predictor.predict()
                         if predicted:
@@ -491,7 +527,7 @@ class EmotionController:
 
                             # ④ 비교
                             if self._comparator:
-                                label, magnitude = self._comparator.compare(avg.scores, predicted.scores)
+                                label, magnitude = self._comparator.compare(final_avg.scores, predicted.scores)
                                 self.state.comparison_label = label
                                 self.state.comparison_magnitude = magnitude
                                 self.state.add_log(f"비교: {label} ({magnitude:.2f})")
@@ -505,7 +541,7 @@ class EmotionController:
             if self._voice_feedback and self.config.tts_enabled:
                 try:
                     message = self._voice_feedback.speak(
-                        avg.dominant, self.state.comparison_label
+                        final_avg.dominant, self.state.comparison_label
                     )
                     if message:
                         self.state.add_log(f"TTS: {message}")
@@ -515,8 +551,7 @@ class EmotionController:
             self.state.add_log("데이터 부족")
 
         # 주기 리셋
-        if self._averager:
-            self._averager.reset()
+        self._voice_averager.reset()
         if self._microphone:
             try:
                 self._microphone.clear_buffer()

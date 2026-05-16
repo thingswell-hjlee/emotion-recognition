@@ -75,6 +75,9 @@ class AppState:
     voice_status: str = "대기 중"
     lstm_status: str = "데이터 수집 중"
 
+    # 음성 파이프라인 상태 (새)
+    voice_pipeline_state: Optional[object] = None  # VoicePipelineState
+
     # 로그
     log_messages: List[str] = field(default_factory=list)
 
