@@ -6,7 +6,7 @@
 # Contact: hjlee@thingswell.co.kr
 # ============================================
 #
-# Release Package Build Script
+# Release Package Build Script (개발자 전용)
 # Creates the distribution ZIP file for Windows beta testing.
 #
 # Usage:
@@ -36,33 +36,6 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
 # ──────────────────────────────────────
-# Exclusion patterns
-# ──────────────────────────────────────
-$ExcludeDirs = @(
-    ".git",
-    ".venv",
-    "__pycache__",
-    ".pytest_cache",
-    "logs",
-    "test_report",
-    "dist",
-    "node_modules",
-    ".mypy_cache"
-)
-
-$ExcludeExtensions = @(
-    "*.pyc",
-    "*.pyo",
-    "*.egg-info",
-    "*.tmp",
-    "*.log"
-)
-
-Write-Host "[INFO] Excluded directories: $($ExcludeDirs -join ', ')" -ForegroundColor DarkGray
-Write-Host "[INFO] Excluded extensions: $($ExcludeExtensions -join ', ')" -ForegroundColor DarkGray
-Write-Host ""
-
-# ──────────────────────────────────────
 # Clean previous build
 # ──────────────────────────────────────
 if (Test-Path $StagingDir) {
@@ -72,8 +45,6 @@ if (Test-Path $StagingDir) {
 if (Test-Path $ZipPath) {
     Remove-Item -Force $ZipPath
 }
-
-# Create dist directory
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
 # ──────────────────────────────────────
@@ -87,16 +58,14 @@ New-Item -ItemType Directory -Path "$StagingDir\models" -Force | Out-Null
 New-Item -ItemType Directory -Path "$StagingDir\release" -Force | Out-Null
 New-Item -ItemType Directory -Path "$StagingDir\release\scripts" -Force | Out-Null
 
-Write-Host "[INFO] Staging directory: $StagingDir"
-Write-Host ""
-
 # ──────────────────────────────────────
-# Copy root-level files (required)
+# Copy root-level files
 # ──────────────────────────────────────
 Write-Host "[INFO] Copying root-level files..."
 
 $RootFiles = @(
     "START.bat",
+    "README_FOR_TESTERS.txt",
     "README.md",
     "setup-guide.md",
     "privacy-notice.md",
@@ -123,10 +92,10 @@ foreach ($file in $RootFiles) {
         Write-Host "  [OK] $file" -ForegroundColor Green
         $copiedRoot++
     } else {
-        Write-Host "  [WARN] $file not found, skipping." -ForegroundColor Yellow
+        Write-Host "  [WARN] $file not found" -ForegroundColor Yellow
     }
 }
-Write-Host "  ($copiedRoot/$($RootFiles.Count) root files copied)"
+Write-Host "  ($copiedRoot/$($RootFiles.Count) root files)" 
 Write-Host ""
 
 # ──────────────────────────────────────
@@ -145,7 +114,6 @@ foreach ($dir in $DirectoriesToCopy) {
     $destDir = Join-Path $StagingDir $dir.Dest
     if (Test-Path $srcDir) {
         Write-Host "[INFO] Copying $($dir.Name)/..."
-        # Copy excluding __pycache__
         Get-ChildItem -Path $srcDir -Recurse |
             Where-Object { $_.FullName -notmatch "__pycache__" -and $_.FullName -notmatch "\.pyc$" } |
             ForEach-Object {
@@ -154,9 +122,9 @@ foreach ($dir in $DirectoriesToCopy) {
                 if ($_.PSIsContainer) {
                     New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
                 } else {
-                    $targetDir = Split-Path $targetPath -Parent
-                    if (-not (Test-Path $targetDir)) {
-                        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                    $targetDir2 = Split-Path $targetPath -Parent
+                    if (-not (Test-Path $targetDir2)) {
+                        New-Item -ItemType Directory -Path $targetDir2 -Force | Out-Null
                     }
                     Copy-Item $_.FullName -Destination $targetPath
                 }
@@ -179,7 +147,8 @@ $ReleaseFiles = @(
     "release\README_TESTER.md",
     "release\TEST_CHECKLIST.md",
     "release\TROUBLESHOOTING.md",
-    "release\RELEASE_NOTES.md"
+    "release\RELEASE_NOTES.md",
+    "release\GITHUB_RELEASE_GUIDE.md"
 )
 
 $copiedRelease = 0
@@ -228,21 +197,14 @@ Write-Host ""
 # Create ZIP archive
 # ──────────────────────────────────────
 Write-Host "[INFO] Creating ZIP archive..."
-Write-Host "  Source: $StagingDir"
-Write-Host "  Target: $ZipPath"
-
 Compress-Archive -Path "$StagingDir\*" -DestinationPath $ZipPath -CompressionLevel Optimal
 
 $zipSize = (Get-Item $ZipPath).Length
 $zipSizeMB = [math]::Round($zipSize / 1MB, 2)
-
-# ──────────────────────────────────────
-# Count total files in package
-# ──────────────────────────────────────
 $totalFiles = (Get-ChildItem -Path $StagingDir -Recurse -File | Measure-Object).Count
 
 # ──────────────────────────────────────
-# Summary output
+# Summary
 # ──────────────────────────────────────
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green
@@ -253,30 +215,18 @@ Write-Host " ZIP File:     $ZipFileName" -ForegroundColor White
 Write-Host " ZIP Path:     $ZipPath" -ForegroundColor White
 Write-Host " ZIP Size:     $zipSizeMB MB" -ForegroundColor White
 Write-Host " Total Files:  $totalFiles" -ForegroundColor White
-Write-Host " Folder Name:  $ReleaseName" -ForegroundColor White
-Write-Host ""
-Write-Host " Included:" -ForegroundColor Cyan
-Write-Host "   Root files:     $copiedRoot" -ForegroundColor White
-Write-Host "   Directories:    $copiedDirs (ui, modules, utils, models)" -ForegroundColor White
-Write-Host "   Release docs:   $copiedRelease" -ForegroundColor White
-Write-Host "   BAT scripts:    $copiedScripts" -ForegroundColor White
 Write-Host ""
 Write-Host " Excluded:" -ForegroundColor Yellow
 Write-Host "   .git, .venv, __pycache__, .pytest_cache" -ForegroundColor DarkGray
-Write-Host "   logs, test_report, dist, *.pyc, *.log" -ForegroundColor DarkGray
+Write-Host "   logs, test_report*, dist, *.pyc, *.log" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host " Tester Execution Order:" -ForegroundColor Cyan
-Write-Host "   1. Unzip $ZipFileName" -ForegroundColor White
-Write-Host "   2. cd $ReleaseName\release\scripts" -ForegroundColor White
-Write-Host "   3. install_all.bat" -ForegroundColor White
-Write-Host "   4. health_check.bat" -ForegroundColor White
-Write-Host "   5. run_app.bat" -ForegroundColor White
-Write-Host "   6. Open http://localhost:8501" -ForegroundColor White
-Write-Host "   7. Test: minimal -> face -> voice -> full" -ForegroundColor White
-Write-Host "   8. collect_logs.bat" -ForegroundColor White
+Write-Host " ─── Tester Quick Start ───" -ForegroundColor Cyan
+Write-Host "   1. Download ZIP" -ForegroundColor White
+Write-Host "   2. Extract to C:\thingswell_test\" -ForegroundColor White
+Write-Host "   3. Double-click START.bat" -ForegroundColor White
+Write-Host "   4. Test app at http://localhost:8501" -ForegroundColor White
+Write-Host "   5. Run release\scripts\collect_logs.bat" -ForegroundColor White
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green
-Write-Host " Thingswell Inc." -ForegroundColor DarkGray
-Write-Host " Copyright (c) 2026 Thingswell Inc." -ForegroundColor DarkGray
-Write-Host " All rights reserved." -ForegroundColor DarkGray
+Write-Host " Thingswell Inc. (c) 2026" -ForegroundColor DarkGray
 Write-Host "============================================" -ForegroundColor Green

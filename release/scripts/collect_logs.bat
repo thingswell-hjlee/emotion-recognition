@@ -2,159 +2,115 @@
 chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
+echo.
 echo ============================================
 echo  Thingswell Inc.
 echo  Multimodal Emotion Recognition ^& Korean STT Monitor
 echo  Beta Test Release v0.1.0
-echo  Copyright (c) 2026 Thingswell Inc.
-echo  Contact: hjlee@thingswell.co.kr
+echo  Log Collector
 echo ============================================
 echo.
-echo [INFO] Collecting test logs and system information...
-echo.
 
-REM Navigate to project root
+REM ZIP 루트로 이동 (release\scripts 기준 2단계 상위)
 pushd "%~dp0..\.."
 
-REM Activate .venv if exists
-if exist ".venv\Scripts\activate.bat" (
-    call ".venv\Scripts\activate.bat"
-)
+REM 타임스탬프 폴더 생성
+for /f "tokens=2 delims==" %%i in ('wmic os get localdatetime /value 2^>nul ^| find "="') do set "DT=%%i"
+set "TS=%DT:~0,4%%DT:~4,2%%DT:~6,2%_%DT:~8,2%%DT:~10,2%%DT:~12,2%"
+set "REPORT_DIR=test_report_%TS%"
 
-REM Create test_report directory
-if not exist "test_report" mkdir test_report
+if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
-REM Get current date and time
-for /f "tokens=*" %%i in ('date /t') do set "CURRENT_DATE=%%i"
-for /f "tokens=*" %%i in ('time /t') do set "CURRENT_TIME=%%i"
-for /f "tokens=*" %%i in ('hostname') do set "PC_NAME=%%i"
+echo  출력 폴더: %REPORT_DIR%
+echo.
 
-REM ──────────────────────────────────────
-REM Save python_version.txt
-REM ──────────────────────────────────────
-echo [INFO] Saving python_version.txt...
-python --version > "test_report\python_version.txt" 2>&1
-echo [DONE] python_version.txt
-
-REM ──────────────────────────────────────
-REM Save pip_freeze.txt
-REM ──────────────────────────────────────
-echo [INFO] Saving pip_freeze.txt...
-pip freeze > "test_report\pip_freeze.txt" 2>&1
-echo [DONE] pip_freeze.txt
-
-REM ──────────────────────────────────────
-REM Generate system_info.txt
-REM ──────────────────────────────────────
-echo [INFO] Generating system_info.txt...
-
+REM ── system_info.txt ──
+echo  [1/6] system_info.txt ...
 (
     echo ============================================
     echo  Test Report - System Information
     echo ============================================
     echo.
-    echo [Company Information]
+    echo [Company]
     echo company: Thingswell Inc.
     echo app_name: Multimodal Emotion Recognition ^& Korean STT Monitor
-    echo project_name: emotion-recognition
     echo version: 0.1.0
-    echo release_channel: Beta Test Release
     echo build_tag: beta-win64-v0.1.0
-    echo copyright: Copyright (c) 2026 Thingswell Inc. All rights reserved.
-    echo contact_email: hjlee@thingswell.co.kr
-    echo website: https://thingswell.co.kr
+    echo copyright: Copyright (c) 2026 Thingswell Inc.
+    echo contact: hjlee@thingswell.co.kr
     echo.
-    echo [Test Environment]
-    echo tester_pc_name: %PC_NAME%
-    echo test_date: %CURRENT_DATE%
-    echo test_time: %CURRENT_TIME%
+    echo [Environment]
+    echo pc_name: %COMPUTERNAME%
+    echo user: %USERNAME%
+    echo date: %DATE% %TIME%
     echo.
-    echo [Python Environment]
-) > "test_report\system_info.txt"
+    echo [OS]
+) > "%REPORT_DIR%\system_info.txt"
+systeminfo 2>nul | findstr /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory" >> "%REPORT_DIR%\system_info.txt" 2>&1
+echo  OK
 
-python --version >> "test_report\system_info.txt" 2>&1
-echo. >> "test_report\system_info.txt"
-
-echo [OS Information] >> "test_report\system_info.txt"
-systeminfo | findstr /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory" >> "test_report\system_info.txt" 2>&1
-
-echo [DONE] system_info.txt
-
-REM ──────────────────────────────────────
-REM Generate test_report_summary.json
-REM ──────────────────────────────────────
-echo [INFO] Generating test_report_summary.json...
-
-python -c "import json, sys, os, platform; sys.path.insert(0, '.'); from version import *; data={'company': COMPANY_NAME, 'app_name': APP_NAME, 'project_name': PROJECT_NAME, 'version': VERSION, 'release_channel': RELEASE_CHANNEL, 'build_tag': BUILD_TAG, 'copyright': COPYRIGHT, 'contact_email': CONTACT_EMAIL, 'website': WEBSITE, 'build_date': BUILD_DATE, 'tester_pc_name': platform.node(), 'test_datetime': __import__('datetime').datetime.now().isoformat(), 'python_version': platform.python_version(), 'platform': platform.platform(), 'selected_mode': 'N/A', 'selected_profile': 'N/A'}; f=open('test_report/test_report_summary.json','w',encoding='utf-8'); json.dump(data, f, indent=2, ensure_ascii=False); f.close(); print('[DONE] test_report_summary.json')" 2>&1
-
-if errorlevel 1 (
-    echo [WARNING] Could not generate JSON report. Python or version.py may not be accessible.
-)
-
-REM ──────────────────────────────────────
-REM Generate performance_metrics.csv header
-REM ──────────────────────────────────────
-echo [INFO] Checking performance_metrics.csv...
-
-if not exist "test_report\performance_metrics.csv" (
-    (
-        echo # Thingswell Inc. - Multimodal Emotion Recognition ^& Korean STT Monitor
-        echo # Version: Beta Test Release v0.1.0
-        echo # Copyright (c) 2026 Thingswell Inc. All rights reserved.
-        echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
-        echo timestamp,module,metric_name,metric_value,unit,profile
-    ) > "test_report\performance_metrics.csv"
-    echo [DONE] performance_metrics.csv created (header only).
+REM ── python_version.txt ──
+echo  [2/6] python_version.txt ...
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" --version > "%REPORT_DIR%\python_version.txt" 2>&1
 ) else (
-    echo [INFO] performance_metrics.csv already exists (preserved).
+    python --version > "%REPORT_DIR%\python_version.txt" 2>&1
+    if errorlevel 1 (
+        echo Python not found > "%REPORT_DIR%\python_version.txt"
+    )
 )
+echo  OK
 
-REM ──────────────────────────────────────
-REM Generate reliability_events.csv header
-REM ──────────────────────────────────────
-echo [INFO] Checking reliability_events.csv...
-
-if not exist "test_report\reliability_events.csv" (
-    (
-        echo # Thingswell Inc. - Multimodal Emotion Recognition ^& Korean STT Monitor
-        echo # Version: Beta Test Release v0.1.0
-        echo # Copyright (c) 2026 Thingswell Inc. All rights reserved.
-        echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
-        echo timestamp,event_type,module,description,severity
-    ) > "test_report\reliability_events.csv"
-    echo [DONE] reliability_events.csv created (header only).
+REM ── pip_freeze.txt ──
+echo  [3/6] pip_freeze.txt ...
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -m pip freeze > "%REPORT_DIR%\pip_freeze.txt" 2>&1
 ) else (
-    echo [INFO] reliability_events.csv already exists (preserved).
+    echo .venv not found - pip freeze skipped > "%REPORT_DIR%\pip_freeze.txt"
+)
+echo  OK
+
+REM ── version_info.txt (from version.py) ──
+echo  [4/6] version_info.txt ...
+if exist "version.py" (
+    if exist ".venv\Scripts\python.exe" (
+        ".venv\Scripts\python.exe" -c "import sys; sys.path.insert(0,'.'); from version import *; print(f'APP_NAME={APP_NAME}\nVERSION={VERSION}\nBUILD_TAG={BUILD_TAG}\nCOMPANY={COMPANY_NAME}\nCOPYRIGHT={COPYRIGHT}\nCONTACT={CONTACT_EMAIL}')" > "%REPORT_DIR%\version_info.txt" 2>&1
+    ) else (
+        type version.py > "%REPORT_DIR%\version_info.txt"
+    )
+) else (
+    echo version.py not found > "%REPORT_DIR%\version_info.txt"
+)
+echo  OK
+
+REM ── health_check.txt ──
+echo  [5/6] health_check.txt ...
+if exist "logs\health_check.txt" (
+    copy /Y "logs\health_check.txt" "%REPORT_DIR%\health_check.txt" >nul 2>&1
+    echo  OK (copied)
+) else (
+    echo health_check not yet run > "%REPORT_DIR%\health_check.txt"
+    echo  OK (not available)
 )
 
-REM ──────────────────────────────────────
-REM Copy app logs if exist
-REM ──────────────────────────────────────
+REM ── app logs ──
+echo  [6/6] app logs ...
 if exist "logs" (
-    echo [INFO] Copying app logs...
-    xcopy /E /I /Y "logs" "test_report\logs" >nul 2>&1
-    echo [DONE] App logs copied.
+    xcopy /E /I /Y "logs" "%REPORT_DIR%\logs" >nul 2>&1
+    echo  OK (copied)
 ) else (
-    echo [INFO] No app logs directory found (normal for first run).
+    echo  SKIP (no logs folder)
 )
 
 echo.
 echo ============================================
-echo  [DONE] Log collection complete.
+echo  [DONE] 로그 수집 완료
 echo.
-echo  Output folder: test_report\
-echo  Files generated:
-echo    - python_version.txt
-echo    - pip_freeze.txt
-echo    - system_info.txt
-echo    - test_report_summary.json
-echo    - performance_metrics.csv
-echo    - reliability_events.csv
-echo    - logs\ (if app logs exist)
+echo  폴더: %REPORT_DIR%\
+echo.
+echo  이 폴더를 ZIP으로 압축하여
+echo  hjlee@thingswell.co.kr 로 전달해 주세요.
 echo ============================================
-echo.
-echo  Please compress and send the test_report\ folder to:
-echo  hjlee@thingswell.co.kr
 echo.
 
 popd
