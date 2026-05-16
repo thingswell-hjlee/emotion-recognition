@@ -169,6 +169,19 @@ class Config:
     stt_min_speech_seconds: float = 1.5       # STT 실행 최소 발화 길이 (초)
     stt_history_size: int = 5                 # 최근 인식 문장 히스토리 크기
 
+    # --- 실시간 STT 트리거 설정 ---
+    stt_realtime_enabled: bool = True              # 실시간 VAD+STT 사용 여부
+    stt_rt_chunk_ms: int = 100                     # audio chunk 크기 (ms)
+    stt_rt_pre_roll_sec: float = 0.5               # pre-roll buffer (초)
+    stt_rt_silence_timeout_sec: float = 1.5        # 무음 지속 → SPEECH_END (초)
+    stt_rt_min_speech_sec: float = 0.8             # 최소 speech segment 길이 (초)
+    stt_rt_max_speech_sec: float = 30.0            # 최대 speech segment 길이 (초)
+    stt_rt_noise_floor_factor: float = 3.0         # speech threshold = noise_floor * factor
+    stt_rt_noise_floor_min: float = 0.005          # 최소 noise floor
+    stt_rt_noise_floor_window_sec: float = 2.0     # noise floor 학습 윈도우 (초)
+    stt_rt_queue_size: int = 10                    # STT queue 최대 크기
+    stt_rt_model_size: str = "tiny"                # 실시간 STT 모델 (tiny 권장)
+
     # --- 라이브 카메라 프리뷰 설정 ---
     live_preview_enabled: bool = True         # 라이브 영상 표시 여부
     live_preview_fps: int = 5                 # UI 프리뷰 FPS (낮을수록 부하 감소)

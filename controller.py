@@ -63,6 +63,9 @@ class EmotionController:
         self._stt_engine = None
         self._stt_history = None
 
+        # 실시간 STT 트리거 엔진 (VAD + background worker)
+        self._stt_realtime = None
+
         # 적응형 스케줄러 (분석 주기 동적 조절)
         self._adaptive_scheduler = None
 
@@ -132,6 +135,10 @@ class EmotionController:
 
         # STT
         self._init_stt()
+
+        # 실시간 STT (voice/full/debug 모드에서만)
+        if self.config.run_mode in (RUN_MODE_VOICE, RUN_MODE_FULL) or self.config.performance_profile == "debug":
+            self._init_stt_realtime()
 
         self.logger.info("시스템 초기화 완료")
         self._notify_state()
@@ -318,6 +325,19 @@ class EmotionController:
             self._stt_engine = None
             self._stt_history = None
 
+    def _init_stt_realtime(self):
+        """실시간 STT 트리거 엔진 초기화 (voice/full/debug 모드, 실패해도 앱 계속)"""
+        try:
+            from modules.stt_realtime import STTRealtimeEngine
+            self._stt_realtime = STTRealtimeEngine(self.config)
+            self.logger.info("[STT-RT] 실시간 STT 엔진 인스턴스 생성 완료")
+        except ImportError as e:
+            self.logger.info(f"[STT-RT] 모듈 import 실패 (optional): {e}")
+            self._stt_realtime = None
+        except Exception as e:
+            self.logger.error(f"[STT-RT] 초기화 실패: {e}")
+            self._stt_realtime = None
+
     # ================================================================
     # 시작 / 정지
     # ================================================================
@@ -351,6 +371,22 @@ class EmotionController:
         # 타이머
         self._timer.start()
 
+        # 실시간 STT 시작 (voice/full/debug에서만)
+        if self._stt_realtime and self.config.stt_enabled:
+            try:
+                device_id = self.config.audio_device_id
+                started = self._stt_realtime.start(
+                    device_id=device_id,
+                    on_result=self._on_stt_realtime_result,
+                )
+                if started:
+                    self.logger.info("[STT-RT] 실시간 STT 시작 완료")
+                    self.state.add_log("[STT-RT] 실시간 음성 인식 시작")
+                else:
+                    self.logger.warning("[STT-RT] 실시간 STT 시작 실패 (모델 또는 마이크 문제)")
+            except Exception as e:
+                self.logger.error(f"[STT-RT] 시작 실패: {e}")
+
         self.logger.info(f"분석 시작 (모드: {self.config.run_mode}, 주기: {self.config.cycle_seconds}초)")
         self._notify_state()
 
@@ -363,6 +399,13 @@ class EmotionController:
         self.state.is_running = False
 
         self._timer.stop()
+
+        # 실시간 STT 정지
+        if self._stt_realtime:
+            try:
+                self._stt_realtime.stop()
+            except Exception:
+                pass
 
         self.state.camera_active = False
         if self._face_thread and self._face_thread.is_alive():
@@ -772,3 +815,12 @@ class EmotionController:
                 self._on_state_update(self.state)
             except Exception:
                 pass
+
+    def _on_stt_realtime_result(self, result):
+        """실시간 STT 결과 콜백 (STT worker thread에서 호출)"""
+        try:
+            if result.is_success and result.text.strip():
+                self.state.add_log(f'[STT-RT] "{result.text}" ({result.duration_sec:.1f}s)')
+                self.logger.info(f'[STT-RT] text="{result.text}" conf={result.confidence} dur={result.duration_sec:.1f}s')
+        except Exception:
+            pass

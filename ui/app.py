@@ -530,11 +530,11 @@ def render_sidebar():
             st.session_state.stt_self_test_running = False
             with st.spinner("STT 셀프 테스트 중..."):
                 try:
-                    from modules.stt_engine import run_stt_self_test
-                    test_results = run_stt_self_test()
+                    from modules.stt_realtime import STTRealtimeEngine
+                    test_results = STTRealtimeEngine.self_test()
                     for r in test_results:
-                        icon = "✅" if r.success else "❌"
-                        st.caption(f"{icon} {r.step}: {r.message} ({r.duration_ms:.0f}ms)")
+                        icon = "✅" if r["success"] else "❌"
+                        st.caption(f"{icon} {r['step']}: {r['message']} ({r['duration_ms']:.0f}ms)")
                 except Exception as e:
                     st.error(f"셀프 테스트 오류: {e}")
 
@@ -851,102 +851,109 @@ def render_live_preview(state: AppState):
 # ============================================================
 
 def render_stt_panel(state: AppState):
-    """STT 인식 결과 + 상태 정보 + 히스토리 표시"""
+    """실시간 STT 패널: VAD 상태, segment duration, queue size, model loaded, last Korean text"""
     st.divider()
-    st.subheader("🗣️ 한국어 음성 인식 (STT)")
+    st.subheader("🗣️ 실시간 한국어 음성 인식 (STT)")
 
-    # 엔진 상태 정보 표시
     controller = st.session_state.controller
-    stt_engine = None
-    if controller and hasattr(controller, '_stt_engine'):
-        stt_engine = controller._stt_engine
 
-    # STTEngineInfo 가져오기
-    try:
-        from modules.stt_engine import (
-            get_stt_engine_info, faster_whisper_available, openai_whisper_available,
-            STT_STATUS_MESSAGES, STT_OK, STT_READY, STT_DISABLED_BY_MODE,
-            STT_DISABLED_BY_USER, STT_ENGINE_NOT_INSTALLED, STT_MODEL_NOT_LOADED,
-            STT_WAITING_FOR_SPEECH, STT_TRANSCRIBING,
-        )
+    # 실시간 STT 엔진 상태 가져오기
+    stt_rt = None
+    if controller and hasattr(controller, '_stt_realtime'):
+        stt_rt = controller._stt_realtime
 
-        config = controller.config if controller else Config()
-        info = get_stt_engine_info(config, stt_engine)
-
-        # 상태 정보 테이블
-        col1, col2 = st.columns(2)
-        with col1:
-            st.caption(f"STT installed: {'✅' if info.faster_whisper_available or info.openai_whisper_available else '❌'}")
-            st.caption(f"STT engine: **{info.selected_engine}**")
-            st.caption(f"STT model loaded: {'✅' if info.model_loaded else '❌'}")
-        with col2:
-            st.caption(f"Enabled by mode: {'✅' if info.stt_enabled_by_mode else '❌'}")
-            st.caption(f"Enabled by user: {'✅' if info.stt_enabled_by_user else '❌'}")
-            status_msg = STT_STATUS_MESSAGES.get(info.current_status, info.current_status)
-            status_icon = {
-                STT_OK: "✅", STT_READY: "✅",
-                STT_WAITING_FOR_SPEECH: "⏳", STT_TRANSCRIBING: "🔄",
-                STT_DISABLED_BY_MODE: "⚪", STT_DISABLED_BY_USER: "⚪",
-                STT_ENGINE_NOT_INSTALLED: "❌", STT_MODEL_NOT_LOADED: "⚠️",
-            }.get(info.current_status, "❓")
-            st.caption(f"Status: {status_icon} {status_msg}")
-
-        # 엔진 경고
-        if info.init_error:
-            st.warning(f"⚠️ {info.init_error}")
-            return
-
-        if info.current_status == STT_ENGINE_NOT_INSTALLED:
-            st.info(
-                "STT 엔진이 설치되지 않았습니다.\n\n"
-                "**설치 방법:** `pip install -r requirements-stt.txt`\n\n"
-                "faster-whisper 기반 (Windows 11 호환)"
-            )
-            return
-
-        if info.current_status == STT_DISABLED_BY_MODE:
-            st.caption("ℹ️ voice 또는 full 모드에서 STT가 활성화됩니다.")
-            return
-
-        if info.current_status == STT_DISABLED_BY_USER:
+    if stt_rt is None:
+        # 모드 체크
+        mode = st.session_state.current_mode
+        if mode in ("minimal", "face"):
+            st.caption("ℹ️ voice 또는 full 모드에서 실시간 STT가 활성화됩니다.")
+        elif not st.session_state.get("stt_enabled", False):
             st.caption("ℹ️ 사이드바에서 STT를 켜세요.")
-            return
-
-    except ImportError:
-        st.info("STT 모듈 로드 실패")
+        else:
+            st.info("실시간 STT 엔진이 초기화되지 않았습니다. `pip install -r requirements-stt.txt`")
         return
 
-    # 최신 결과
-    stt_latest = getattr(state, 'stt_latest', None)
-    if stt_latest:
-        if stt_latest.status == STT_OK and stt_latest.text:
-            st.success(f"📝 \"{stt_latest.text}\"")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.caption(f"시간: {stt_latest.timestamp.strftime('%H:%M:%S')}")
-            with col2:
-                conf_str = f"{stt_latest.confidence:.0%}" if stt_latest.confidence else "N/A"
-                st.caption(f"신뢰도: {conf_str} | 길이: {stt_latest.duration_sec:.1f}s")
-        elif stt_latest.status in ("SILENCE_DETECTED", "STT_WAITING_FOR_SPEECH"):
-            st.caption("🔇 무음 감지 - STT 대기 중")
-        elif stt_latest.status == STT_TRANSCRIBING:
-            st.caption("⏳ 인식 중...")
-        elif stt_latest.status == STT_MODEL_NOT_LOADED:
-            st.warning(f"⚠️ 모델 미로드: {stt_latest.error_message}")
-        elif "ERROR" in stt_latest.status:
-            st.error(f"❌ STT 오류: {stt_latest.error_message}")
-        else:
-            st.caption(f"상태: {stt_latest.status}")
-    else:
-        st.caption("⏳ 대기 중... (유효 발화 감지 시 자동 실행)")
+    # 상태 조회
+    status = stt_rt.get_status()
 
-    # 히스토리 (최근 5개)
-    stt_history = getattr(state, 'stt_history', [])
-    if stt_history:
-        with st.expander(f"최근 인식 기록 ({len(stt_history)}개)", expanded=False):
-            for i, result in enumerate(stt_history):
-                time_str = result.timestamp.strftime('%H:%M:%S')
-                st.caption(f"[{time_str}] {result.text}")
+    # --- 실시간 상태 표시 ---
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        vad_icons = {
+            "SILENCE": "🔇",
+            "SPEECH_START": "🟡",
+            "SPEAKING": "🔴",
+            "SPEECH_END": "🟢",
+        }
+        vad_icon = vad_icons.get(status.vad_state, "⚪")
+        st.metric("VAD 상태", f"{vad_icon} {status.vad_state}")
+
+    with col2:
+        if status.segment_duration_sec > 0:
+            st.metric("발화 길이", f"{status.segment_duration_sec:.1f}s")
+        else:
+            st.metric("발화 길이", "—")
+
+    with col3:
+        st.metric("STT Queue", f"{status.queue_size}")
+
+    with col4:
+        model_badge = "✅" if status.model_loaded else "❌"
+        st.metric("모델", f"{model_badge} {status.model_name or 'N/A'}")
+
+    # --- 오디오 레벨 ---
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.caption(f"RMS: {status.current_rms:.4f}")
+    with col2:
+        st.caption(f"Noise Floor: {status.noise_floor:.4f}")
+    with col3:
+        st.caption(f"Threshold: {status.speech_threshold:.4f}")
+    with col4:
+        st.caption(f"dBFS: {status.current_dbfs:.1f}")
+
+    # 레벨 바
+    if status.speech_threshold > 0:
+        level = min(1.0, status.current_rms / max(status.speech_threshold * 2, 0.001))
+        st.progress(level, text=f"입력 레벨 (threshold={status.speech_threshold:.4f})")
+
+    # --- 스트림 / 장치 정보 ---
+    stream_icon = "🟢" if status.stream_active else "⚪"
+    worker_icon = "🟢" if status.worker_active else "⚪"
+    st.caption(
+        f"Stream: {stream_icon} {status.device_name} ({status.sample_rate}Hz) | "
+        f"Worker: {worker_icon} | "
+        f"총 세그먼트: {status.segments_total} | "
+        f"총 인식: {status.total_transcriptions}"
+    )
+
+    # --- 마지막 인식 결과 ---
+    if status.last_text:
+        st.success(f"📝 \"{status.last_text}\"")
+        col1, col2 = st.columns(2)
+        with col1:
+            if status.last_timestamp:
+                st.caption(f"시간: {status.last_timestamp.strftime('%H:%M:%S')}")
+        with col2:
+            conf_str = f"{status.last_confidence:.0%}" if status.last_confidence else "N/A"
+            st.caption(f"신뢰도: {conf_str}")
+    else:
+        if status.stream_active and status.model_loaded:
+            st.caption("⏳ 대기 중... (말을 하면 자동으로 인식합니다)")
+        elif not status.model_loaded:
+            st.warning("⚠️ STT 모델 로드 실패. `pip install faster-whisper` 확인")
+        elif not status.stream_active:
+            st.caption("⚪ 스트림 비활성")
+
+    # --- 최근 인식 히스토리 ---
+    results = stt_rt.get_results(5)
+    if results:
+        with st.expander(f"최근 인식 기록 ({len(results)}개)", expanded=False):
+            for r in reversed(results):
+                time_str = r.timestamp.strftime('%H:%M:%S')
+                conf = f" ({r.confidence:.0%})" if r.confidence else ""
+                st.caption(f"[{time_str}] {r.text}{conf} [{r.duration_sec:.1f}s]")
 
 
 # ============================================================

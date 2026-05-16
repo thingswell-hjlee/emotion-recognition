@@ -121,13 +121,50 @@ UI 사이드바에서 성능 프로파일을 선택하여 CPU 부하를 조절�
 
 ## 한국어 STT (음성 인식)
 
-- OpenAI Whisper 또는 faster-whisper 기반 로컬 STT
+- **faster-whisper 기본 엔진** (Windows 11 + Python 3.11 호환, openai-whisper fallback)
 - VAD가 유효 발화를 감지한 경우에만 STT 실행 (무음 시 실행 안 함)
-- 모델 크기: tiny (~75MB) / base (~150MB) / small (~500MB)
-- 기본값: base 모델 (CPU 환경 적합)
+- 모델 크기: tiny (~40MB) / base (~75MB) / small (~250MB)
+- 기본값: 실시간 STT는 tiny 모델 (저지연), 배치 STT는 base 모델
 - 최초 실행 시 모델 자동 다운로드 (인터넷 필요)
 - CPU 환경에서 small 이상은 느릴 수 있음 → 일반 노트북에서는 tiny/base 권장
 - 외부 서버 전송 없음 (완전 로컬 처리)
+
+### 실시간 STT 트리거 엔진 (v0.4)
+
+voice/full/debug 모드에서 자동 활성화되는 실시간 음성 인식:
+
+```
+Audio Stream (100ms chunks) → VAD State Machine → STT Worker (background thread)
+                                    ↓
+                            pre-roll 500ms 포함
+                            speech segment 누적
+                            SPEECH_END 감지 → queue → faster-whisper transcribe
+```
+
+**VAD 상태 머신:**
+- `SILENCE`: adaptive noise floor 학습, pre-roll buffer 유지
+- `SPEECH_START`: RMS > noise_floor × 3.0 감지 → pre-roll 포함 시작
+- `SPEAKING`: 음성 누적 중 (최대 30초)
+- `SPEECH_END`: 1.5초 무음 → segment 완성 → STT queue 전달
+
+**설정 (`config.py`):**
+```python
+stt_rt_chunk_ms = 100              # audio chunk 크기
+stt_rt_pre_roll_sec = 0.5          # pre-roll buffer
+stt_rt_silence_timeout_sec = 1.5   # 무음→종료 타임아웃
+stt_rt_min_speech_sec = 0.8        # 최소 segment 길이
+stt_rt_noise_floor_factor = 3.0    # speech threshold 배수
+stt_rt_model_size = "tiny"         # 실시간용 모델 (tiny 권장)
+```
+
+**UI 표시 항목:**
+- VAD 상태 (SILENCE/SPEAKING 등)
+- 현재 segment 길이
+- STT queue 크기
+- 모델 로드 상태
+- 마지막 인식 한국어 텍스트
+
+**STT Self Test:** 사이드바 버튼으로 import → 모델 로드 → transcribe → 마이크 확인
 
 ## 개인정보 보호
 
