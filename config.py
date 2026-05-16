@@ -124,6 +124,13 @@ class Config:
     # --- 음성 분류기 모드 ---
     voice_classifier_mode: str = "heuristic"  # heuristic / trained / dummy
 
+    # --- 분석 주기 (개별 모듈별) ---
+    face_detection_interval_sec: float = 1.0      # 얼굴 감지 주기 (초)
+    face_emotion_interval_sec: float = 2.0        # 표정 감정 분석 주기 (초)
+    lstm_update_interval_sec: float = 1.0         # LSTM 업데이트 주기 (초)
+    voice_analysis_interval_sec: float = 5.0      # 음성 분석 주기 (초)
+    ui_refresh_interval_sec: float = 0.7          # UI 갱신 주기 (초)
+
     # --- 분석 설정 ---
     cycle_seconds: int = 10
     cycle_min: int = 3
@@ -208,6 +215,13 @@ class Config:
         self.live_preview_enabled = profile.live_preview_enabled
         self.live_preview_fps = profile.live_preview_fps
         self.stt_enabled = profile.stt_enabled
+
+        # 개별 모듈 분석 주기 적용
+        self.face_detection_interval_sec = profile.face_detection_interval_sec
+        self.face_emotion_interval_sec = profile.face_emotion_interval_sec
+        self.lstm_update_interval_sec = profile.lstm_update_interval_sec
+        self.voice_analysis_interval_sec = profile.voice_analysis_interval_sec
+        self.ui_refresh_interval_sec = profile.ui_refresh_interval_sec
 
     def apply_mode_defaults(self, run_mode: str):
         """

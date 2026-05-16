@@ -9,6 +9,8 @@ controller.py - Core Controller (오케스트레이터)
 - graceful degradation: 기능 실패 시 UI에 상태만 표시
 - 슬라이더 값 변경 시 전체 재초기화 없이 hot-update 지원
 - EmotionSmoother로 결과 안정화
+- AdaptiveScheduler로 상태 기반 분석 주기 동적 조절
+- ExpressionSequenceBuffer로 시퀀스 기반 LSTM 입력 생성
 """
 
 import threading
@@ -61,6 +63,12 @@ class EmotionController:
         self._stt_engine = None
         self._stt_history = None
 
+        # 적응형 스케줄러 (분석 주기 동적 조절)
+        self._adaptive_scheduler = None
+
+        # 표정 시퀀스 버퍼 (LSTM 입력용)
+        self._expression_buffer = None
+
         # 라이브 프리뷰용 최신 프레임
         self._latest_frame = None
 
@@ -98,6 +106,12 @@ class EmotionController:
             self._voice_averager = VoiceAverager(self.config)
         except Exception as e:
             self.logger.error(f"기본 모듈 초기화 실패: {e}")
+
+        # 적응형 스케줄러 초기화
+        self._init_adaptive_scheduler()
+
+        # 표정 시퀀스 버퍼 초기화
+        self._init_expression_buffer()
 
         # 카메라
         if self.config.use_camera:
@@ -139,6 +153,40 @@ class EmotionController:
             self.state.face_status = f"카메라 오류: {e}"
             self.logger.error(f"카메라 초기화 실패: {e}")
             self._webcam = None
+
+    def _init_adaptive_scheduler(self):
+        """적응형 스케줄러 초기화 (실패해도 앱 계속 - 기본 주기 사용)"""
+        try:
+            from modules.adaptive_scheduler import AdaptiveScheduler
+            self._adaptive_scheduler = AdaptiveScheduler(self.config)
+            self.logger.info(
+                f"[SCHEDULER] 초기화 완료 "
+                f"(face_det={self.config.face_detection_interval_sec}s, "
+                f"face_emo={self.config.face_emotion_interval_sec}s, "
+                f"lstm={self.config.lstm_update_interval_sec}s)"
+            )
+        except Exception as e:
+            self.logger.error(f"적응형 스케줄러 초기화 실패: {e}")
+            self._adaptive_scheduler = None
+
+    def _init_expression_buffer(self):
+        """표정 시퀀스 버퍼 초기화 (실패해도 앱 계속 - 기존 LSTM 방식 사용)"""
+        try:
+            from modules.expression_sequence_buffer import ExpressionSequenceBuffer
+            self._expression_buffer = ExpressionSequenceBuffer(
+                buffer_duration_sec=60.0,
+                sequence_length=self.config.lstm_sequence_length,
+                n_features=self.config.lstm_n_features,
+                confidence_weight_threshold=self.config.confidence_threshold,
+            )
+            self.logger.info(
+                f"[BUFFER] 초기화 완료 "
+                f"(duration=60s, seq_len={self.config.lstm_sequence_length}, "
+                f"features={self.config.lstm_n_features})"
+            )
+        except Exception as e:
+            self.logger.error(f"표정 시퀀스 버퍼 초기화 실패: {e}")
+            self._expression_buffer = None
 
     def _init_face_classifier(self):
         """표정 분류기 초기화"""
@@ -346,6 +394,10 @@ class EmotionController:
             self._voice_averager.reset()
         if self._lstm_predictor:
             self._lstm_predictor.reset()
+        if self._adaptive_scheduler:
+            self._adaptive_scheduler.reset()
+        if self._expression_buffer:
+            self._expression_buffer.clear()
         self._smoother.reset()
         self.state.add_log(f"주기 변경: {self.config.cycle_seconds}초")
         self._notify_state()
@@ -393,16 +445,40 @@ class EmotionController:
     # ================================================================
 
     def _face_analysis_loop(self):
-        """표정 분석 루프 (별도 스레드) - 상세 debug 로그 포함"""
+        """표정 분석 루프 (별도 스레드) - 적응형 스케줄러 & 시퀀스 버퍼 통합"""
         retry_count = 0
         cpu_saver_sleep = 0.05 if self.config.cpu_saver else 0.02
         analysis_count = 0
+
+        # 적응형 스케줄러 기반 타이밍
+        last_face_detection_time = 0.0
+        last_face_emotion_time = 0.0
 
         self.logger.info("[LOOP] 표정 분석 루프 시작")
         self.state.add_log("🔄 분석 루프 시작됨")
 
         while self._running and self.state.camera_active:
             try:
+                # 적응형 스케줄러 틱 (CPU 부하 체크 등)
+                if self._adaptive_scheduler:
+                    self._adaptive_scheduler.on_tick()
+
+                # 현재 interval 조회 (스케줄러가 없으면 config 기본값 사용)
+                if self._adaptive_scheduler:
+                    intervals = self._adaptive_scheduler.intervals
+                    face_det_interval = intervals.face_detection_sec
+                    face_emo_interval = intervals.face_emotion_sec
+                else:
+                    face_det_interval = self.config.face_detection_interval_sec
+                    face_emo_interval = self.config.face_emotion_interval_sec
+
+                now = time.time()
+
+                # 얼굴 감지 주기 체크
+                if now - last_face_detection_time < face_det_interval:
+                    time.sleep(cpu_saver_sleep)
+                    continue
+
                 success, frame = self._webcam.read_frame()
                 if not success:
                     retry_count += 1
@@ -416,23 +492,36 @@ class EmotionController:
 
                 retry_count = 0
                 self._frame_count += 1
+                last_face_detection_time = now
 
                 # 라이브 프리뷰용 프레임 저장 (매 프레임)
                 if self.config.live_preview_enabled:
                     self.state.latest_frame = frame
 
-                # 프레임 스킵
-                if self._frame_count % self.config.analysis_skip_frames != 0:
-                    time.sleep(cpu_saver_sleep)
-                    continue
-
                 # 얼굴 감지
                 faces = self._webcam.detect_faces(frame)
                 if not faces:
                     self.state.face_status = "NO_FACE"
+
+                    # 적응형 스케줄러에 미감지 알림
+                    if self._adaptive_scheduler:
+                        self._adaptive_scheduler.on_no_face_detected()
+
+                    # 시퀀스 버퍼에 미감지 기록
+                    if self._expression_buffer:
+                        self._expression_buffer.add_no_face()
+
                     # 주기적으로 로그 출력 (매번은 너무 많음)
-                    if self._frame_count % (self.config.analysis_skip_frames * 10) == 0:
+                    if self._frame_count % 10 == 0:
                         self.state.add_log("👤 얼굴 미감지 (NO_FACE)")
+                    time.sleep(cpu_saver_sleep)
+                    continue
+
+                # 표정 감정 분석 주기 체크
+                if now - last_face_emotion_time < face_emo_interval:
+                    # 얼굴은 감지됐지만 감정 분석 주기가 안 됨 - 감지 이벤트만 전달
+                    if self._adaptive_scheduler:
+                        self._adaptive_scheduler.on_face_detected()
                     time.sleep(cpu_saver_sleep)
                     continue
 
@@ -454,6 +543,7 @@ class EmotionController:
                     continue
 
                 analysis_count += 1
+                last_face_emotion_time = now
 
                 # 결과 처리 (smoothing 적용)
                 with self._lock:
@@ -465,15 +555,32 @@ class EmotionController:
                     self.state.current_emotion = display_result
                     self.state.face_status = f"분석 중 ({display_result.dominant} {display_result.confidence:.0%})"
 
+                    # 적응형 스케줄러에 감지 + 스코어 전달
+                    if self._adaptive_scheduler:
+                        self._adaptive_scheduler.on_face_detected(display_result.scores)
+
+                    # 표정 시퀀스 버퍼에 추가
+                    if self._expression_buffer:
+                        self._expression_buffer.add(
+                            emotion_label=display_result.dominant,
+                            scores=display_result.scores,
+                            confidence=display_result.confidence,
+                            face_detected=True,
+                            frame_quality=1.0,
+                        )
+
                     # face 결과를 voice_averager에 추가 (분리 평균 계산용)
                     if self._voice_averager:
                         self._voice_averager.add_face_result(display_result)
 
                     # 첫 결과 및 주기적 debug 로그
                     if analysis_count == 1 or analysis_count % 5 == 0:
+                        scheduler_state = ""
+                        if self._adaptive_scheduler:
+                            scheduler_state = f" [sched:{self._adaptive_scheduler.state.value}]"
                         self.state.add_log(
                             f"📊 분석 #{analysis_count}: {display_result.dominant} "
-                            f"({display_result.confidence:.0%}) [{display_result.source}]"
+                            f"({display_result.confidence:.0%}) [{display_result.source}]{scheduler_state}"
                         )
 
                 self._notify_state()
@@ -500,6 +607,7 @@ class EmotionController:
         """
         주기 종료 처리 (새 음성 파이프라인 통합).
         face/voice 결과를 분리 평균하고, 동적 가중치로 통합합니다.
+        ExpressionSequenceBuffer를 사용하여 LSTM 시퀀스 품질 관리.
         """
         # ① 음성 파이프라인 실행 (voice/full 모드)
         if self.config.use_voice and self._microphone and self._voice_pipeline:
@@ -574,10 +682,23 @@ class EmotionController:
                 "scores": final_avg.scores,
             })
 
-            # ③ LSTM 예측
+            # ③ LSTM 예측 (ExpressionSequenceBuffer 우선 사용)
             if self._lstm_predictor:
                 try:
+                    # 기존 방식: data point 추가 (호환성 유지)
                     self._lstm_predictor.add_data_point(final_avg.scores)
+
+                    # 시퀀스 버퍼 품질 로그
+                    if self._expression_buffer:
+                        buf_quality = self._expression_buffer.get_quality()
+                        if buf_quality.total_entries > 0:
+                            self.state.add_log(
+                                f"[BUFFER] entries={buf_quality.total_entries} "
+                                f"face_ratio={buf_quality.valid_face_ratio:.0%} "
+                                f"conf={buf_quality.avg_confidence:.0%} "
+                                f"quality={buf_quality.quality_score:.0%}"
+                            )
+
                     if self._lstm_predictor.is_ready:
                         predicted = self._lstm_predictor.predict()
                         if predicted:

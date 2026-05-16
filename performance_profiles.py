@@ -27,16 +27,23 @@ class PerformanceProfile:
     analysis_interval: int          # 초 (cycle_seconds)
     analysis_skip_frames: int       # N프레임마다 1회 분석
 
+    # 개별 모듈 분석 주기 (초)
+    face_detection_interval_sec: float = 1.0      # 얼굴 감지 주기
+    face_emotion_interval_sec: float = 2.0        # 표정 감정 분석 주기
+    lstm_update_interval_sec: float = 1.0         # LSTM 업데이트 주기
+    voice_analysis_interval_sec: float = 5.0      # 음성 분석 주기
+    ui_refresh_interval_sec: float = 0.7          # UI 갱신 주기
+
     # 모듈 활성화
-    face_analysis_enabled: bool
-    audio_analysis_enabled: bool
+    face_analysis_enabled: bool = True
+    audio_analysis_enabled: bool = False
 
     # 결과 안정화
-    smoothing_window: int           # 이동평균 윈도우 크기 (최근 N회)
-    confidence_threshold: float     # 이 미만이면 low confidence 표시
+    smoothing_window: int = 4           # 이동평균 윈도우 크기 (최근 N회)
+    confidence_threshold: float = 0.6   # 이 미만이면 low confidence 표시
 
     # CPU 절약
-    cpu_saver: bool                 # True면 추가 sleep 삽입
+    cpu_saver: bool = False             # True면 추가 sleep 삽입
 
     # 라이브 프리뷰
     live_preview_enabled: bool = True
@@ -55,6 +62,11 @@ PROFILE_LOW_POWER = PerformanceProfile(
     camera_fps=10,
     analysis_interval=12,
     analysis_skip_frames=10,
+    face_detection_interval_sec=2.0,
+    face_emotion_interval_sec=4.0,
+    lstm_update_interval_sec=2.0,
+    voice_analysis_interval_sec=8.0,
+    ui_refresh_interval_sec=1.0,
     face_analysis_enabled=True,
     audio_analysis_enabled=False,
     smoothing_window=5,
@@ -72,6 +84,11 @@ PROFILE_STANDARD = PerformanceProfile(
     camera_fps=15,
     analysis_interval=10,
     analysis_skip_frames=5,
+    face_detection_interval_sec=1.0,
+    face_emotion_interval_sec=2.0,
+    lstm_update_interval_sec=1.0,
+    voice_analysis_interval_sec=5.0,
+    ui_refresh_interval_sec=0.7,
     face_analysis_enabled=True,
     audio_analysis_enabled=False,
     smoothing_window=4,
@@ -89,6 +106,11 @@ PROFILE_HIGH_ACCURACY = PerformanceProfile(
     camera_fps=15,
     analysis_interval=8,
     analysis_skip_frames=3,
+    face_detection_interval_sec=0.5,
+    face_emotion_interval_sec=1.0,
+    lstm_update_interval_sec=0.5,
+    voice_analysis_interval_sec=3.0,
+    ui_refresh_interval_sec=0.5,
     face_analysis_enabled=True,
     audio_analysis_enabled=True,
     smoothing_window=3,
@@ -106,6 +128,11 @@ PROFILE_DEBUG = PerformanceProfile(
     camera_fps=15,
     analysis_interval=10,
     analysis_skip_frames=5,
+    face_detection_interval_sec=1.0,
+    face_emotion_interval_sec=2.0,
+    lstm_update_interval_sec=1.0,
+    voice_analysis_interval_sec=5.0,
+    ui_refresh_interval_sec=0.5,
     face_analysis_enabled=True,
     audio_analysis_enabled=True,
     smoothing_window=3,
