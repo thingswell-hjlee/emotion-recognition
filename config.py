@@ -7,11 +7,17 @@ Multimodal Emotion State Monitor의 모든 설정값을 관리합니다.
 - face: 웹캠 표정 분석 (DeepFace 필요)
 - voice: 마이크 음성 분석 (librosa, sounddevice 필요)
 - full: 표정+음성+LSTM+음성안내 전체 기능
+
+성능 프로파일:
+- low_power: 최소 부하, 일반 노트북 권장
+- standard: 균형 잡힌 성능 (기본값)
+- high_accuracy: 최대 정확도, 고사양 PC 권장
+- debug: 모든 옵션 수동 제어
 """
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 
 # === 실행 모드 ===
@@ -71,19 +77,19 @@ class Config:
     """전역 설정 데이터클래스"""
 
     # --- 실행 모드 ---
-    # minimal: 첫 실행 권장 (의존성 최소, 더미 분석)
-    # face: 표정 분석 (DeepFace 필요)
-    # voice: 음성 분석 (librosa, sounddevice 필요)
-    # full: 전체 기능
     run_mode: str = RUN_MODE_MINIMAL
 
+    # --- 성능 프로파일 ---
+    performance_profile: str = "standard"
+
     # --- 카메라 설정 ---
-    camera_device_id: int = 0       # 카메라 인덱스 (0, 1, 2 등)
-    frame_width: int = 640          # 안정성 우선 해상도
-    frame_height: int = 480
-    camera_fps: int = 15            # 낮은 FPS로 안정성 확보
-    analysis_skip_frames: int = 5   # 5프레임마다 1회 분석 (CPU 부하 감소)
-    camera_retry_count: int = 3     # 프레임 읽기 실패 시 재시도 횟수
+    camera_device_id: int = 0
+    frame_width: int = 480
+    frame_height: int = 360
+    camera_fps: int = 15
+    analysis_skip_frames: int = 5
+    camera_retry_count: int = 3
+    camera_enabled: bool = True
 
     # --- 마이크 설정 ---
     audio_sample_rate: int = 16000
@@ -91,14 +97,24 @@ class Config:
     audio_chunk_size: int = 1024
     silence_threshold: float = 0.01
     silence_duration: float = 2.0
+    audio_enabled: bool = False
 
     # --- 분석 설정 ---
-    cycle_seconds: int = 10         # 감정 인식 주기 (5~20초)
-    cycle_min: int = 5
-    cycle_max: int = 20
-    face_weight: float = 0.6       # 통합 시 표정 가중치
-    voice_weight: float = 0.4      # 통합 시 음성 가중치
-    analysis_mode: str = "integrated"  # face_only / voice_only / integrated
+    cycle_seconds: int = 10
+    cycle_min: int = 3
+    cycle_max: int = 15
+    face_weight: float = 0.6
+    voice_weight: float = 0.4
+    analysis_mode: str = "integrated"
+    face_analysis_enabled: bool = True
+    audio_analysis_enabled: bool = False
+
+    # --- 결과 안정화 ---
+    smoothing_window: int = 4       # 이동평균 윈도우 크기
+    confidence_threshold: float = 0.6  # 이 미만이면 low confidence
+
+    # --- CPU 절약 ---
+    cpu_saver: bool = False
 
     # --- LSTM 설정 ---
     lstm_sequence_length: int = 10
@@ -107,9 +123,9 @@ class Config:
     lstm_n_features: int = 9
 
     # --- TTS (음성 안내) 설정 ---
-    tts_enabled: bool = False       # ⚠️ 기본 OFF (안정성 우선)
+    tts_enabled: bool = False
     tts_volume: int = 70
-    tts_min_interval: int = 15      # 동일 메시지 최소 간격 (초)
+    tts_min_interval: int = 15
     tts_max_repeat: int = 3
     tts_language: str = "ko"
 
@@ -128,18 +144,72 @@ class Config:
     voice_model_path: str = "models/voice_emotion_model.pkl"
 
     # --- GPU 설정 ---
-    # Intel Arc Graphics 환경에서 CPU 실행 기본
     force_cpu: bool = True
     suppress_tf_warnings: bool = True
 
+    # === 프로파일 적용 ===
+
+    def apply_profile(self, profile_name: str):
+        """
+        성능 프로파일을 적용합니다.
+        프로파일 값으로 카메라/분석 설정을 업데이트합니다.
+        """
+        from performance_profiles import get_profile
+        profile = get_profile(profile_name)
+
+        self.performance_profile = profile_name
+        self.frame_width, self.frame_height = profile.resolution
+        self.camera_fps = profile.camera_fps
+        self.cycle_seconds = profile.analysis_interval
+        self.analysis_skip_frames = profile.analysis_skip_frames
+        self.face_analysis_enabled = profile.face_analysis_enabled
+        self.audio_analysis_enabled = profile.audio_analysis_enabled
+        self.smoothing_window = profile.smoothing_window
+        self.confidence_threshold = profile.confidence_threshold
+        self.cpu_saver = profile.cpu_saver
+
+    def apply_mode_defaults(self, run_mode: str):
+        """
+        실행 모드에 맞는 기본값을 적용합니다.
+        모드 전환 시 호출됩니다.
+        """
+        self.run_mode = run_mode
+
+        if run_mode == RUN_MODE_MINIMAL:
+            self.camera_enabled = True
+            self.audio_enabled = False
+            self.face_analysis_enabled = False   # 더미 분석
+            self.audio_analysis_enabled = False
+
+        elif run_mode == RUN_MODE_FACE:
+            self.camera_enabled = True
+            self.audio_enabled = False
+            self.face_analysis_enabled = True
+            self.audio_analysis_enabled = False
+
+        elif run_mode == RUN_MODE_VOICE:
+            self.camera_enabled = False
+            self.audio_enabled = True
+            self.face_analysis_enabled = False
+            self.audio_analysis_enabled = True
+
+        elif run_mode == RUN_MODE_FULL:
+            self.camera_enabled = True
+            self.audio_enabled = True
+            self.face_analysis_enabled = True
+            self.audio_analysis_enabled = True
+
+    def set_resolution(self, width: int, height: int):
+        """해상도 변경"""
+        self.frame_width = width
+        self.frame_height = height
+
+    # === 유효성 검증 ===
+
     def validate(self) -> bool:
-        """설정값 유효성 검증"""
-        assert self.run_mode in VALID_RUN_MODES, \
-            f"run_mode must be one of {VALID_RUN_MODES}"
+        assert self.run_mode in VALID_RUN_MODES
         assert self.cycle_min <= self.cycle_seconds <= self.cycle_max
         assert 0 <= self.tts_volume <= 100
-        assert 0.0 <= self.face_weight <= 1.0
-        assert 0.0 <= self.voice_weight <= 1.0
         return True
 
     def update_cycle(self, new_cycle: int):
@@ -150,15 +220,17 @@ class Config:
         """볼륨 변경"""
         self.tts_volume = max(0, min(100, new_volume))
 
+    # === 모드 기반 속성 ===
+
     @property
     def use_deepface(self) -> bool:
-        """DeepFace 사용 여부 (모드에 따라)"""
-        return self.run_mode in (RUN_MODE_FACE, RUN_MODE_FULL)
+        """DeepFace 사용 여부"""
+        return self.face_analysis_enabled and self.run_mode in (RUN_MODE_FACE, RUN_MODE_FULL)
 
     @property
     def use_voice(self) -> bool:
         """음성 분석 사용 여부"""
-        return self.run_mode in (RUN_MODE_VOICE, RUN_MODE_FULL)
+        return self.audio_analysis_enabled and self.run_mode in (RUN_MODE_VOICE, RUN_MODE_FULL)
 
     @property
     def use_lstm(self) -> bool:
@@ -168,7 +240,7 @@ class Config:
     @property
     def use_camera(self) -> bool:
         """카메라 사용 여부"""
-        return self.run_mode in (RUN_MODE_MINIMAL, RUN_MODE_FACE, RUN_MODE_FULL)
+        return self.camera_enabled and self.run_mode in (RUN_MODE_MINIMAL, RUN_MODE_FACE, RUN_MODE_FULL)
 
 
 # === TensorFlow CPU 강제 설정 ===
@@ -176,7 +248,7 @@ def setup_tensorflow_cpu():
     """TensorFlow를 CPU 모드로 강제 설정 (Intel Arc Graphics 대응)"""
     try:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # GPU 경고 숨김
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
     except Exception:
         pass

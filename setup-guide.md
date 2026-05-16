@@ -146,8 +146,37 @@ Could not load dynamic library 'libcudart.so'
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
 | `run_mode` | `"minimal"` | 실행 모드 (minimal/face/voice/full) |
+| `performance_profile` | `"standard"` | 성능 프로파일 (low_power/standard/high_accuracy/debug) |
 | `camera_device_id` | 0 | 카메라 인덱스 |
 | `camera_fps` | 15 | 프레임 레이트 (낮을수록 안정) |
-| `cycle_seconds` | 10 | 분석 주기 (5~20초) |
+| `cycle_seconds` | 10 | 분석 주기 (3~15초) |
+| `smoothing_window` | 4 | 결과 이동평균 윈도우 크기 |
+| `confidence_threshold` | 0.6 | low confidence 판단 기준 |
+| `cpu_saver` | False | CPU 절약 모드 (추가 sleep) |
 | `tts_enabled` | False | 음성 안내 ON/OFF |
 | `force_cpu` | True | GPU 비사용 (CPU 강제) |
+
+---
+
+## 8. 성능 프로파일 가이드
+
+UI 사이드바에서 성능 프로파일을 선택할 수 있습니다.
+
+| 프로파일 | 해상도 | 주기 | 스킵 | CPU 절약 | 권장 환경 |
+|----------|--------|------|------|----------|-----------|
+| 🔋 Low Power | 320x240 | 12초 | 10 | ✅ | 일반 노트북, 배터리 |
+| ⚡ Standard | 480x360 | 10초 | 5 | ❌ | 대부분의 PC |
+| 🎯 High Accuracy | 640x480 | 8초 | 3 | ❌ | 고사양 데스크톱 |
+| 🔧 Debug | 640x480 | 10초 | 5 | ❌ | 개발/테스트 |
+
+### 권장 조합
+
+| 환경 | 모드 | 프로파일 |
+|------|------|----------|
+| LG gram 배터리 사용 | minimal | Low Power |
+| LG gram 전원 연결 | face | Standard |
+| 고사양 데스크톱 | full | High Accuracy |
+| 개발/디버깅 | any | Debug (모듈 개별 ON/OFF) |
+
+> ⚠️ **full mode + High Accuracy**는 CPU 부하가 높습니다.
+> 일반 노트북에서는 **Standard** 또는 **Low Power**를 권장합니다.

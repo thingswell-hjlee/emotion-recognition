@@ -7,6 +7,8 @@ controller.py - Core Controller (오케스트레이터)
 - 모든 외부 호출에 try/except 적용
 - run_mode에 따라 필요한 모듈만 활성화
 - graceful degradation: 기능 실패 시 UI에 상태만 표시
+- 슬라이더 값 변경 시 전체 재초기화 없이 hot-update 지원
+- EmotionSmoother로 결과 안정화
 """
 
 import threading
@@ -22,6 +24,7 @@ from config import Config, DEFAULT_CONFIG, RUN_MODE_MINIMAL, RUN_MODE_FACE, RUN_
 from utils.data_types import EmotionScores, AppState
 from utils.timer import CycleTimer
 from utils.logger import Logger
+from utils.smoothing import EmotionSmoother
 
 
 class EmotionController:
@@ -39,11 +42,16 @@ class EmotionController:
         self._face_classifier = None
         self._microphone = None
         self._voice_classifier = None
-        self._integrator = None
         self._averager = None
         self._lstm_predictor = None
         self._comparator = None
         self._voice_feedback = None
+
+        # 결과 안정화 (smoothing)
+        self._smoother = EmotionSmoother(
+            window_size=self.config.smoothing_window,
+            confidence_threshold=self.config.confidence_threshold,
+        )
 
         # 타이머
         self._timer = CycleTimer(
@@ -57,17 +65,19 @@ class EmotionController:
         self._frame_count = 0
         self._lock = threading.Lock()
 
-    # === 초기화 ===
+    # ================================================================
+    # 초기화
+    # ================================================================
 
     def initialize(self) -> bool:
         """
         모든 모듈 초기화.
         개별 모듈 실패 시에도 앱은 계속 실행됨.
         """
-        self.logger.info(f"시스템 초기화 (모드: {self.config.run_mode})")
+        self.logger.info(f"시스템 초기화 (모드: {self.config.run_mode}, 프로파일: {self.config.performance_profile})")
         self.state.run_mode = self.config.run_mode
 
-        # Averager, Comparator는 항상 초기화 (순수 Python, 실패 없음)
+        # Averager, Comparator (순수 Python, 실패 없음)
         try:
             from modules.emotion_averager import EmotionAverager
             from modules.emotion_comparator import EmotionComparator
@@ -76,21 +86,21 @@ class EmotionController:
         except Exception as e:
             self.logger.error(f"기본 모듈 초기화 실패: {e}")
 
-        # 카메라 초기화
+        # 카메라
         if self.config.use_camera:
             self._init_camera()
 
-        # 표정 분류기 초기화
+        # 표정 분류기
         self._init_face_classifier()
 
-        # 음성 모듈 초기화
+        # 음성 모듈
         if self.config.use_voice:
             self._init_voice_modules()
 
-        # LSTM 초기화
+        # LSTM
         self._init_lstm()
 
-        # TTS 초기화
+        # TTS
         self._init_voice_feedback()
 
         self.logger.info("시스템 초기화 완료")
@@ -107,7 +117,7 @@ class EmotionController:
                 self.logger.info("웹캠 초기화 완료")
             else:
                 self.state.face_status = "카메라 연결 실패"
-                self.logger.warning("웹캠 열기 실패. 표정 분석이 비활성화됩니다.")
+                self.logger.warning("웹캠 열기 실패")
                 self._webcam = None
         except Exception as e:
             self.state.face_status = f"카메라 오류: {e}"
@@ -127,8 +137,7 @@ class EmotionController:
             self._face_classifier = None
 
     def _init_voice_modules(self):
-        """음성 모듈 초기화 (마이크 + 분류기)"""
-        # 마이크
+        """음성 모듈 초기화"""
         try:
             from modules.microphone import MicrophoneCapture
             self._microphone = MicrophoneCapture(self.config)
@@ -137,31 +146,27 @@ class EmotionController:
                 self.logger.info("마이크 초기화 완료")
             else:
                 self.state.voice_status = "마이크 연결 실패"
-                self.logger.warning("마이크 열기 실패. 음성 분석이 비활성화됩니다.")
                 self._microphone = None
         except ImportError:
             self.state.voice_status = "sounddevice 미설치"
-            self.logger.warning("sounddevice 미설치. 음성 분석 비활성화.")
             self._microphone = None
         except Exception as e:
             self.state.voice_status = f"마이크 오류: {e}"
-            self.logger.error(f"마이크 초기화 실패: {e}")
             self._microphone = None
 
-        # 음성 분류기
         try:
             from modules.voice_emotion import VoiceEmotionClassifier
             self._voice_classifier = VoiceEmotionClassifier(self.config)
             self._voice_classifier.initialize()
         except ImportError:
-            self.logger.warning("librosa 미설치. 음성 감정 분류 비활성화.")
+            self.logger.warning("librosa 미설치. 음성 분류 비활성화.")
             self._voice_classifier = None
         except Exception as e:
             self.logger.error(f"음성 분류기 초기화 실패: {e}")
             self._voice_classifier = None
 
     def _init_lstm(self):
-        """LSTM 예측기 초기화"""
+        """LSTM 초기화"""
         try:
             from modules.lstm_predictor import LSTMPredictor
             self._lstm_predictor = LSTMPredictor(self.config)
@@ -175,15 +180,13 @@ class EmotionController:
             self.state.lstm_status = "비활성화"
 
     def _init_voice_feedback(self):
-        """음성 안내 초기화"""
+        """TTS 초기화"""
         try:
             from modules.voice_feedback import VoiceFeedback
             self._voice_feedback = VoiceFeedback(self.config)
             self._voice_feedback.initialize()
             if self._voice_feedback.init_error:
                 self.logger.warning(self._voice_feedback.init_error)
-
-            # TTS-마이크 간섭 방지
             if self._microphone and self._voice_feedback:
                 self._voice_feedback.set_callbacks(
                     on_start=lambda: self._microphone.set_tts_playing(True),
@@ -193,7 +196,9 @@ class EmotionController:
             self.logger.error(f"TTS 초기화 실패: {e}")
             self._voice_feedback = None
 
-    # === 시작/정지 ===
+    # ================================================================
+    # 시작 / 정지
+    # ================================================================
 
     def start(self):
         """분석 파이프라인 시작"""
@@ -257,16 +262,21 @@ class EmotionController:
                 self._webcam.release()
             except Exception:
                 pass
+            self._webcam = None
         if self._microphone:
             try:
                 self._microphone.close()
             except Exception:
                 pass
+            self._microphone = None
         self.logger.info("리소스 해제 완료")
 
-    # === 설정 변경 ===
+    # ================================================================
+    # Hot-update (슬라이더 변경 시 전체 재초기화 없이 반영)
+    # ================================================================
 
     def update_cycle(self, new_cycle: int):
+        """분석 주기 변경 (hot-update)"""
         self.config.update_cycle(new_cycle)
         self.state.cycle_seconds = self.config.cycle_seconds
         self._timer.reset(self.config.cycle_seconds)
@@ -279,23 +289,26 @@ class EmotionController:
             self._averager.reset()
         if self._lstm_predictor:
             self._lstm_predictor.reset()
+        self._smoother.reset()
         self.state.add_log(f"주기 변경: {self.config.cycle_seconds}초")
         self._notify_state()
 
     def update_volume(self, new_volume: int):
+        """볼륨 변경 (hot-update)"""
         self.config.update_volume(new_volume)
         self.state.volume = self.config.tts_volume
         if self._voice_feedback:
             self._voice_feedback.set_volume(self.config.tts_volume)
 
     def update_voice_feedback(self, enabled: bool):
+        """TTS ON/OFF (hot-update)"""
         self.config.tts_enabled = enabled
         self.state.voice_feedback_enabled = enabled
         if self._voice_feedback:
             self._voice_feedback.set_enabled(enabled)
 
     def update_camera_index(self, new_index: int):
-        """카메라 인덱스 변경"""
+        """카메라 인덱스 변경 (재초기화 필요)"""
         was_running = self._running
         if was_running:
             self.stop()
@@ -305,29 +318,27 @@ class EmotionController:
                 self._webcam.release()
             except Exception:
                 pass
+            self._webcam = None
         self._init_camera()
         if was_running:
             self.start()
         self._notify_state()
 
-    def update_run_mode(self, new_mode: str):
-        """실행 모드 변경"""
-        was_running = self._running
-        if was_running:
-            self.stop()
-        self.config.run_mode = new_mode
-        self.state.run_mode = new_mode
-        self.initialize()
-        if was_running:
-            self.start()
-        self.state.add_log(f"실행 모드 변경: {new_mode}")
-        self._notify_state()
+    def update_smoothing(self, window_size: int, threshold: float):
+        """결과 안정화 파라미터 변경 (hot-update)"""
+        self._smoother.update_window_size(window_size)
+        self._smoother.update_threshold(threshold)
+        self.config.smoothing_window = window_size
+        self.config.confidence_threshold = threshold
 
-    # === 분석 루프 ===
+    # ================================================================
+    # 분석 루프
+    # ================================================================
 
     def _face_analysis_loop(self):
         """표정 분석 루프 (별도 스레드)"""
         retry_count = 0
+        cpu_saver_sleep = 0.05 if self.config.cpu_saver else 0.02
 
         while self._running and self.state.camera_active:
             try:
@@ -344,16 +355,16 @@ class EmotionController:
                 retry_count = 0
                 self._frame_count += 1
 
-                # 프레임 스킵
+                # 프레임 스킵 (analysis_skip_frames 마다 1회만 분석)
                 if self._frame_count % self.config.analysis_skip_frames != 0:
-                    time.sleep(0.01)
+                    time.sleep(cpu_saver_sleep)
                     continue
 
                 # 얼굴 감지
                 faces = self._webcam.detect_faces(frame)
                 if not faces:
                     self.state.face_status = "얼굴 미감지"
-                    time.sleep(0.05)
+                    time.sleep(cpu_saver_sleep)
                     continue
 
                 self.state.face_status = "분석 중"
@@ -370,15 +381,19 @@ class EmotionController:
                 if face_result is None:
                     continue
 
-                # 결과 처리
+                # 결과 smoothing 적용
                 with self._lock:
-                    self.state.current_emotion = face_result
-                    self.state.face_status = "사용 중"
-                    if self._averager:
-                        self._averager.add_result(face_result)
+                    self._smoother.add(face_result)
+                    smoothed = self._smoother.get_smoothed()
+
+                    if smoothed:
+                        self.state.current_emotion = smoothed
+                        self.state.face_status = "사용 중"
+                        if self._averager:
+                            self._averager.add_result(smoothed)
 
                 self._notify_state()
-                time.sleep(0.02)
+                time.sleep(cpu_saver_sleep)
 
             except Exception as e:
                 self.logger.error(f"표정 분석 루프 오류: {e}")
@@ -394,7 +409,7 @@ class EmotionController:
 
     def _process_cycle_end(self):
         """주기 종료 처리"""
-        # ① 음성 분석 (voice mode)
+        # ① 음성 분석
         if self.config.use_voice and self._microphone and self._voice_classifier:
             try:
                 if not self._microphone.is_silence():
@@ -411,7 +426,7 @@ class EmotionController:
                 self.logger.error(f"음성 분석 실패: {e}")
                 self.state.voice_status = "분석 오류"
 
-        # ② 감정 평균 계산
+        # ② 감정 평균
         avg = None
         if self._averager:
             try:
@@ -421,7 +436,7 @@ class EmotionController:
 
         if avg:
             self.state.average_emotion = avg
-            self.state.add_log(f"평균 감정: {avg.dominant} ({avg.confidence:.0%})")
+            self.state.add_log(f"평균: {avg.dominant} ({avg.confidence:.0%})")
             self.logger.emotion("average", {
                 "dominant": avg.dominant,
                 "confidence": avg.confidence,
@@ -446,7 +461,7 @@ class EmotionController:
                                 self.state.comparison_magnitude = magnitude
                                 self.state.add_log(f"비교: {label} ({magnitude:.2f})")
                     else:
-                        self.state.lstm_status = f"데이터 수집 중 ({self._lstm_predictor.data_count}/{self.config.lstm_min_data_points})"
+                        self.state.lstm_status = f"수집 중 ({self._lstm_predictor.data_count}/{self.config.lstm_min_data_points})"
                 except Exception as e:
                     self.logger.error(f"LSTM 예측 실패: {e}")
                     self.state.lstm_status = "예측 오류"
@@ -458,7 +473,7 @@ class EmotionController:
                         avg.dominant, self.state.comparison_label
                     )
                     if message:
-                        self.state.add_log(f"음성 안내: {message}")
+                        self.state.add_log(f"TTS: {message}")
                 except Exception as e:
                     self.logger.error(f"TTS 실패: {e}")
         else:

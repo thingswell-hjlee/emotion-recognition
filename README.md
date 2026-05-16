@@ -75,6 +75,26 @@ pip install librosa==0.10.1 sounddevice==0.4.7
 > ⚠️ **full mode 음성 분석**은 `librosa`와 `sounddevice`가 설치되어야 활성화됩니다.
 > 미설치 시 음성 분석만 비활성화되고 나머지 기능은 정상 동작합니다.
 
+## 성능 프로파일
+
+UI 사이드바에서 성능 프로파일을 선택하여 CPU 부하를 조절할 수 있습니다.
+
+| 프로파일 | 해상도 | 분석 주기 | 프레임 스킵 | 권장 환경 |
+|----------|--------|-----------|-------------|-----------|
+| 🔋 **Low Power** | 320x240 | 12초 | 10프레임 | 일반 노트북, 배터리 사용 시 |
+| ⚡ **Standard** (기본) | 480x360 | 10초 | 5프레임 | 대부분의 PC |
+| 🎯 **High Accuracy** | 640x480 | 8초 | 3프레임 | 고사양 데스크톱 |
+| 🔧 **Debug** | 640x480 | 10초 | 5프레임 | 개발/테스트 (모듈 개별 ON/OFF) |
+
+> 💡 **일반 노트북 (LG gram 등)에서는 Standard 또는 Low Power를 권장**합니다.
+> Full mode + High Accuracy는 CPU 부하가 높으므로 고사양 PC에서 사용하세요.
+
+### 결과 안정화
+
+- 최근 3~5회 분석 결과의 **이동평균**을 적용하여 단일 프레임 노이즈를 제거합니다.
+- Confidence가 60% 미만이면 **low confidence** 경고를 표시합니다.
+- 단일 결과보다 **recent trend**를 우선하여 안정적인 감정 상태를 제공합니다.
+
 ## 주요 기능
 
 - **표정 감정 분석**: 9가지 감정 분류 (DeepFace + 더미 폴백)
@@ -82,7 +102,9 @@ pip install librosa==0.10.1 sounddevice==0.4.7
 - **멀티모달 통합**: 표정 60% + 음성 40% 가중 평균
 - **LSTM 감정 예측**: 시계열 기반 예측 (모델 없으면 이동평균 폴백)
 - **음성 안내**: pyttsx3 TTS (기본 OFF, 선택적 활성화)
-- **Streamlit UI**: 설정, 제어, 결과 표시
+- **결과 안정화**: 이동평균 + confidence threshold로 노이즈 제거
+- **성능 프로파일**: 4단계 부하 조절 (Low Power ~ High Accuracy)
+- **Streamlit UI**: 설정, 제어, 결과 표시, 실시간 상태 바
 
 ## 개인정보 보호
 
@@ -106,6 +128,8 @@ pip install librosa==0.10.1 sounddevice==0.4.7
 - LSTM 모델 파일 없음 → 이동평균 예측으로 폴백
 - pyttsx3 실패 → 음성 안내만 비활성화 (텍스트 안내 유지)
 - 카메라/마이크 접근 실패 → UI에 에러 표시 후 다른 기능 계속 실행
+- 모드 전환 시 기존 리소스를 안전하게 stop → cleanup → 재초기화
+- 슬라이더 값 변경 시 전체 재시작 없이 hot-update 적용
 
 ## 첫 실행 시 참고
 
@@ -123,11 +147,12 @@ pip install librosa==0.10.1 sounddevice==0.4.7
 ```
 emotion-recognition/
 ├── main.py                  # CLI 엔트리포인트
-├── config.py                # 전역 설정 (실행 모드 포함)
+├── config.py                # 전역 설정 (모드 + 프로파일)
+├── performance_profiles.py  # 성능 프로파일 정의
 ├── controller.py            # 파이프라인 오케스트레이터
 ├── modules/                 # 핵심 모듈
 ├── ui/app.py                # Streamlit UI
-├── utils/                   # 유틸리티
+├── utils/                   # 유틸리티 (smoothing, logger, timer)
 ├── models/                  # 모델 파일 (자동 생성)
 ├── logs/                    # 로그 파일 (자동 생성)
 ├── requirements.txt         # 전체 기능 패키지
