@@ -257,6 +257,14 @@ def main():
     # === 결과 표시 ===
     render_results(state)
 
+    # === 입력 상태 (마이크) ===
+    if st.session_state.current_mode in (RUN_MODE_VOICE, RUN_MODE_FULL, "minimal"):
+        render_mic_status(state)
+
+    # === 음성 분석 상세 ===
+    if st.session_state.current_mode in (RUN_MODE_VOICE, RUN_MODE_FULL):
+        render_voice_pipeline(state)
+
     # === 감정 차트 ===
     render_chart(state)
 
@@ -584,6 +592,128 @@ def render_chart(state: AppState):
             st.caption("차트 표시 오류")
     else:
         st.caption("분석이 시작되면 차트가 표시됩니다.")
+
+
+# ============================================================
+# 마이크 입력 상태
+# ============================================================
+
+def render_mic_status(state: AppState):
+    """마이크 입력 레벨, 무음 여부, 장치 정보 표시"""
+    st.divider()
+    st.subheader("🎤 마이크 입력 상태")
+
+    controller = st.session_state.controller
+    if controller is None or not hasattr(controller, '_microphone') or controller._microphone is None:
+        st.info("마이크가 초기화되지 않았습니다.")
+        return
+
+    mic = controller._microphone
+
+    # 장치 정보
+    device = mic.get_device_info()
+    if device:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.caption(f"장치: {device.name}")
+        with col2:
+            st.caption(f"SR: {int(device.sample_rate)}Hz | CH: {device.channels}")
+        with col3:
+            st.caption(f"ID: {device.device_id} {'(기본)' if device.is_default else ''}")
+
+    # 실시간 메트릭
+    metrics = mic.get_metrics()
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        rms_pct = min(100, int(metrics.rms * 1000))
+        st.metric("RMS", f"{metrics.rms:.4f}", delta=f"{rms_pct}%")
+
+    with col2:
+        st.metric("Peak", f"{metrics.peak:.3f}")
+
+    with col3:
+        st.metric("dBFS", f"{metrics.dbfs:.1f}")
+
+    with col4:
+        silence_badge = "🔇 무음" if metrics.is_silence else "🔊 소리 감지"
+        st.metric("상태", silence_badge)
+
+    # RMS 레벨 바 (간단한 시각화)
+    threshold = controller.config.silence_threshold
+    level = min(1.0, metrics.rms / max(threshold * 3, 0.001))
+    st.progress(level, text=f"입력 레벨 (threshold: {threshold})")
+
+
+# ============================================================
+# 음성 분석 파이프라인 상태
+# ============================================================
+
+def render_voice_pipeline(state: AppState):
+    """음성 파이프라인 단계별 진행 상태 + 특징 요약"""
+    st.divider()
+    st.subheader("🔊 음성 분석 상세")
+
+    pipeline_state = getattr(state, 'voice_pipeline_state', None)
+
+    # 분류기 모드 표시
+    controller = st.session_state.controller
+    if controller and hasattr(controller, '_voice_pipeline') and controller._voice_pipeline:
+        mode = controller._voice_pipeline.classifier_mode
+        st.caption(f"음성 모델: **{mode}**")
+    else:
+        st.caption("음성 모델: 비활성화")
+
+    if pipeline_state is None:
+        st.info("파이프라인 대기 중... (다음 주기 완료 시 업데이트)")
+        return
+
+    # 파이프라인 단계 표시
+    stages = getattr(pipeline_state, 'stages', [])
+    if stages:
+        cols = st.columns(len(stages))
+        status_icons = {
+            "대기": "⬜", "진행 중": "🔄", "완료": "✅",
+            "건너뜀": "⏭️", "오류": "❌"
+        }
+        for i, (col, stage) in enumerate(zip(cols, stages)):
+            with col:
+                icon = status_icons.get(stage.status, "⬜")
+                st.caption(f"{icon}\n{stage.name}")
+
+    # VAD 결과
+    vad = getattr(pipeline_state, 'vad_result', None)
+    if vad:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.caption(f"발화 비율: {vad.voice_ratio:.0%}")
+        with col2:
+            st.caption(f"유효 시간: {vad.valid_seconds:.1f}s")
+        with col3:
+            st.caption(f"전체 시간: {vad.total_seconds:.1f}s")
+        with col4:
+            st.caption(f"판정: {vad.status}")
+
+    # 특징 요약
+    features = getattr(pipeline_state, 'features', None)
+    if features and features.is_valid:
+        st.caption("**특징 요약:**")
+        summary = features.to_ui_summary()
+        cols = st.columns(len(summary))
+        for col, (key, val) in zip(cols, summary.items()):
+            with col:
+                st.caption(f"{key}: **{val}**")
+
+    # 감정 결과
+    emotion_result = getattr(pipeline_state, 'emotion_result', None)
+    if emotion_result and emotion_result.emotion:
+        e = emotion_result.emotion
+        emoji = EMOTION_EMOJI.get(e.dominant, "❓")
+        st.caption(
+            f"결과: {emoji} **{e.dominant}** ({e.confidence:.0%}) | "
+            f"신뢰도 등급: {emotion_result.confidence_tier} | "
+            f"근거: {emotion_result.reason}"
+        )
 
 
 # ============================================================
