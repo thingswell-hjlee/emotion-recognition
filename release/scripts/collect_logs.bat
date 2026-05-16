@@ -30,6 +30,20 @@ for /f "tokens=*" %%i in ('time /t') do set "CURRENT_TIME=%%i"
 for /f "tokens=*" %%i in ('hostname') do set "PC_NAME=%%i"
 
 REM ──────────────────────────────────────
+REM Save python_version.txt
+REM ──────────────────────────────────────
+echo [INFO] Saving python_version.txt...
+python --version > "test_report\python_version.txt" 2>&1
+echo [DONE] python_version.txt
+
+REM ──────────────────────────────────────
+REM Save pip_freeze.txt
+REM ──────────────────────────────────────
+echo [INFO] Saving pip_freeze.txt...
+pip freeze > "test_report\pip_freeze.txt" 2>&1
+echo [DONE] pip_freeze.txt
+
+REM ──────────────────────────────────────
 REM Generate system_info.txt
 REM ──────────────────────────────────────
 echo [INFO] Generating system_info.txt...
@@ -60,21 +74,18 @@ echo [INFO] Generating system_info.txt...
 
 python --version >> "test_report\system_info.txt" 2>&1
 echo. >> "test_report\system_info.txt"
-echo [pip freeze] >> "test_report\system_info.txt"
-pip freeze >> "test_report\system_info.txt" 2>&1
 
-echo. >> "test_report\system_info.txt"
 echo [OS Information] >> "test_report\system_info.txt"
 systeminfo | findstr /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory" >> "test_report\system_info.txt" 2>&1
 
-echo [DONE] system_info.txt created.
+echo [DONE] system_info.txt
 
 REM ──────────────────────────────────────
 REM Generate test_report_summary.json
 REM ──────────────────────────────────────
 echo [INFO] Generating test_report_summary.json...
 
-python -c "import json, sys, os, platform; sys.path.insert(0, '.'); from version import *; data={'company': COMPANY_NAME, 'app_name': APP_NAME, 'project_name': PROJECT_NAME, 'version': VERSION, 'release_channel': RELEASE_CHANNEL, 'build_tag': BUILD_TAG, 'copyright': COPYRIGHT, 'contact_email': CONTACT_EMAIL, 'website': WEBSITE, 'build_date': BUILD_DATE, 'tester_pc_name': platform.node(), 'test_datetime': __import__('datetime').datetime.now().isoformat(), 'python_version': platform.python_version(), 'platform': platform.platform(), 'selected_mode': 'N/A', 'selected_profile': 'N/A'}; f=open('test_report/test_report_summary.json','w',encoding='utf-8'); json.dump(data, f, indent=2, ensure_ascii=False); f.close(); print('[DONE] test_report_summary.json created.')" 2>&1
+python -c "import json, sys, os, platform; sys.path.insert(0, '.'); from version import *; data={'company': COMPANY_NAME, 'app_name': APP_NAME, 'project_name': PROJECT_NAME, 'version': VERSION, 'release_channel': RELEASE_CHANNEL, 'build_tag': BUILD_TAG, 'copyright': COPYRIGHT, 'contact_email': CONTACT_EMAIL, 'website': WEBSITE, 'build_date': BUILD_DATE, 'tester_pc_name': platform.node(), 'test_datetime': __import__('datetime').datetime.now().isoformat(), 'python_version': platform.python_version(), 'platform': platform.platform(), 'selected_mode': 'N/A', 'selected_profile': 'N/A'}; f=open('test_report/test_report_summary.json','w',encoding='utf-8'); json.dump(data, f, indent=2, ensure_ascii=False); f.close(); print('[DONE] test_report_summary.json')" 2>&1
 
 if errorlevel 1 (
     echo [WARNING] Could not generate JSON report. Python or version.py may not be accessible.
@@ -83,7 +94,7 @@ if errorlevel 1 (
 REM ──────────────────────────────────────
 REM Generate performance_metrics.csv header
 REM ──────────────────────────────────────
-echo [INFO] Generating performance_metrics.csv...
+echo [INFO] Checking performance_metrics.csv...
 
 if not exist "test_report\performance_metrics.csv" (
     (
@@ -93,15 +104,15 @@ if not exist "test_report\performance_metrics.csv" (
         echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
         echo timestamp,module,metric_name,metric_value,unit,profile
     ) > "test_report\performance_metrics.csv"
-    echo [DONE] performance_metrics.csv created with header.
+    echo [DONE] performance_metrics.csv created (header only).
 ) else (
-    echo [INFO] performance_metrics.csv already exists, skipping header.
+    echo [INFO] performance_metrics.csv already exists (preserved).
 )
 
 REM ──────────────────────────────────────
 REM Generate reliability_events.csv header
 REM ──────────────────────────────────────
-echo [INFO] Generating reliability_events.csv...
+echo [INFO] Checking reliability_events.csv...
 
 if not exist "test_report\reliability_events.csv" (
     (
@@ -111,24 +122,38 @@ if not exist "test_report\reliability_events.csv" (
         echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
         echo timestamp,event_type,module,description,severity
     ) > "test_report\reliability_events.csv"
-    echo [DONE] reliability_events.csv created with header.
+    echo [DONE] reliability_events.csv created (header only).
 ) else (
-    echo [INFO] reliability_events.csv already exists, skipping header.
+    echo [INFO] reliability_events.csv already exists (preserved).
+)
+
+REM ──────────────────────────────────────
+REM Copy app logs if exist
+REM ──────────────────────────────────────
+if exist "logs" (
+    echo [INFO] Copying app logs...
+    xcopy /E /I /Y "logs" "test_report\logs" >nul 2>&1
+    echo [DONE] App logs copied.
+) else (
+    echo [INFO] No app logs directory found (normal for first run).
 )
 
 echo.
 echo ============================================
 echo  [DONE] Log collection complete.
 echo.
-echo  Output: test_report\
-echo  Files:
+echo  Output folder: test_report\
+echo  Files generated:
+echo    - python_version.txt
+echo    - pip_freeze.txt
 echo    - system_info.txt
 echo    - test_report_summary.json
 echo    - performance_metrics.csv
 echo    - reliability_events.csv
+echo    - logs\ (if app logs exist)
 echo ============================================
 echo.
-echo  Please send the test_report folder to:
+echo  Please compress and send the test_report\ folder to:
 echo  hjlee@thingswell.co.kr
 echo.
 

@@ -18,7 +18,7 @@ wheel==0.43.0
 packaging==23.2
 
 # protobuf (CTranslate2 의존성)
-protobuf>=4.25.0,<5.0.0
+protobuf>=6.31.1,<7.0.0
 
 # 기본 STT 엔진: faster-whisper (CTranslate2 기반, 빠르고 Windows 호환)
 faster-whisper>=1.0.0
