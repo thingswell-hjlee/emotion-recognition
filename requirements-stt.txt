@@ -17,8 +17,10 @@ setuptools==69.5.1
 wheel==0.43.0
 packaging==23.2
 
-# protobuf (CTranslate2 의존성)
-protobuf>=6.31.1,<7.0.0
+# protobuf (CTranslate2 의존성 - pip이 자동 해결하도록 넓은 범위 지정)
+# Note: faster-whisper/ctranslate2가 자체적으로 호환 버전을 지정하므로
+#       여기서는 최소 버전만 지정합니다. pip resolver가 최적 버전을 선택합니다.
+protobuf>=3.20.0
 
 # 기본 STT 엔진: faster-whisper (CTranslate2 기반, 빠르고 Windows 호환)
 faster-whisper>=1.0.0
