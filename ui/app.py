@@ -10,6 +10,8 @@ ui/app.py - Streamlit UI
 
 실행: streamlit run ui/app.py
 ⚠️ 프로젝트 루트(emotion-recognition/)에서 실행하세요.
+
+Copyright © 2026 Thingswell Inc. All rights reserved.
 """
 
 import sys
@@ -20,6 +22,22 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+from version import (
+    APP_NAME as TW_APP_NAME,
+    COMPANY_NAME as TW_COMPANY,
+    VERSION as TW_VERSION,
+    RELEASE_CHANNEL as TW_RELEASE,
+    BUILD_TAG as TW_BUILD_TAG,
+    BUILD_DATE as TW_BUILD_DATE,
+    COPYRIGHT as TW_COPYRIGHT,
+    AUTHOR as TW_AUTHOR,
+    CONTACT_EMAIL as TW_CONTACT,
+    WEBSITE as TW_WEBSITE,
+    LICENSE_NOTICE_KO as TW_LICENSE_KO,
+    PRIVACY_NOTICE_KO as TW_PRIVACY_KO,
+    PROJECT_NAME as TW_PROJECT,
+)
 
 import streamlit as st
 from config import (
@@ -241,6 +259,40 @@ def main():
         layout="wide",
     )
 
+    # Debug / Test Mode Detection
+    _DEBUG_MODE = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
+    _TEST_MODE = os.environ.get("TEST_MODE", "").lower() in ("1", "true", "yes")
+
+    # Footer CSS (dark mode compatible)
+    st.markdown(
+        """
+        <style>
+        .thingswell-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(14, 17, 23, 0.95);
+            border-top: 1px solid rgba(250, 250, 250, 0.1);
+            padding: 6px 16px;
+            text-align: center;
+            font-size: 0.7rem;
+            color: rgba(250, 250, 250, 0.55);
+            z-index: 999;
+            line-height: 1.4;
+        }
+        .thingswell-footer a {
+            color: rgba(100, 180, 255, 0.8);
+            text-decoration: none;
+        }
+        .main .block-container {
+            padding-bottom: 70px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     init_session_state()
 
     # ★ 핵심: 매 rerun마다 controller 상태를 UI로 동기화
@@ -294,6 +346,23 @@ def main():
     st.warning(
         "⚠️ 감정 분석 결과는 **참고용**이며, 의학적·심리학적 진단이 아닙니다. "
         "모든 영상/음성은 로컬에서만 처리되며 저장·전송되지 않습니다."
+    )
+
+    # === Thingswell Footer (fixed bottom) ===
+    _footer_debug = ""
+    if _DEBUG_MODE or _TEST_MODE:
+        _footer_debug = f" | Build: {TW_BUILD_TAG} ({TW_BUILD_DATE})"
+    st.markdown(
+        f"""
+        <div class="thingswell-footer">
+            <strong>{TW_COMPANY}</strong> &middot;
+            {TW_APP_NAME}<br>
+            {TW_RELEASE} v{TW_VERSION}{_footer_debug}<br>
+            {TW_COPYRIGHT} &middot;
+            Contact: <a href="mailto:{TW_CONTACT}">{TW_CONTACT}</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     # === 자동 새로고침 ===
@@ -540,6 +609,44 @@ def render_sidebar():
 
         st.divider()
         st.caption("v0.3.0 | Python 3.11 권장")
+
+        # === 제작 정보 / About ===
+        with st.expander("제작 정보 / About"):
+            st.markdown(f"""
+**제품명:** {TW_APP_NAME}  
+**회사:** {TW_COMPANY}  
+**버전:** {TW_RELEASE} v{TW_VERSION}  
+**담당팀:** {TW_AUTHOR}  
+**연락처:** {TW_CONTACT}  
+**웹사이트:** [{TW_WEBSITE}]({TW_WEBSITE})
+
+---
+**저작권:** {TW_COPYRIGHT}
+
+---
+**테스트 목적:**  
+내부 연구, 기능 검증, 신뢰성 시험, 성능 평가 및 데모
+
+---
+**사용 제한:**  
+{TW_LICENSE_KO}
+
+---
+**개인정보 안내:**  
+{TW_PRIVACY_KO}
+            """)
+
+        # Debug/Test build info
+        if os.environ.get("DEBUG", "").lower() in ("1", "true", "yes") or \
+           os.environ.get("TEST_MODE", "").lower() in ("1", "true", "yes"):
+            with st.expander("🔧 Build / Debug Info"):
+                st.code(
+                    f"Build Tag: {TW_BUILD_TAG}\n"
+                    f"Build Date: {TW_BUILD_DATE}\n"
+                    f"Project: {TW_PROJECT}\n"
+                    f"Python: {sys.version}",
+                    language="text",
+                )
 
 
 # ============================================================

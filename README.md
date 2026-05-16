@@ -1,5 +1,9 @@
 # Multimodal Emotion State Monitor
 
+> **Thingswell Inc.** AI Solution Development Team  
+> Beta Test Release v0.1.0 | Copyright © 2026 Thingswell Inc. All rights reserved.  
+> Contact: hjlee@thingswell.co.kr | Website: https://thingswell.co.kr
+
 노트북의 웹캠과 마이크를 통해 감정 상태를 인식하고, LSTM 예측 및 음성 안내를 제공하는 **로컬 실행** 프로그램입니다.
 
 > ⚠️ **개인정보 보호**: 모든 영상/음성은 로컬 메모리에서만 처리되며, 저장·전송되지 않습니다.
@@ -265,3 +269,19 @@ emotion-recognition/
 
 **로그에 "SILENCE_DETECTED" 또는 "INSUFFICIENT_VOICE_DATA"가 보이면**: 정상 동작입니다.
 **로그에 "EMOTION_CLASSIFIED"가 보이면**: 유효 발화 기반 분석이 수행된 것입니다.
+
+---
+
+## 저작권 및 라이선스
+
+Copyright © 2026 Thingswell Inc. All rights reserved.
+
+본 소프트웨어는 내부 연구, 기능 검증, 신뢰성 시험, 성능 평가 및 데모 목적으로 제공됩니다.  
+Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설계, 상업적 재판매, 외부 공개 배포를 금지합니다.
+
+자세한 라이선스 정보: [LICENSE-THINGSWELL.md](LICENSE-THINGSWELL.md)
+
+---
+
+**Thingswell Inc.** AI Solution Development Team  
+Contact: hjlee@thingswell.co.kr | Website: https://thingswell.co.kr

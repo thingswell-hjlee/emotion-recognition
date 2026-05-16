@@ -1,5 +1,12 @@
 # Setup Guide - Windows 11 안정 실행
 
+> **Thingswell Inc.** AI Solution Development Team  
+> Beta Test Release v0.1.0 | Copyright © 2026 Thingswell Inc. All rights reserved.  
+> Contact: hjlee@thingswell.co.kr
+
+> 본 소프트웨어는 내부 연구, 기능 검증, 신뢰성 시험, 성능 평가 및 데모 목적으로 제공됩니다.  
+> Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설계, 상업적 재판매, 외부 공개 배포를 금지합니다.
+
 ## 1. 사전 요구사항
 
 ### 하드웨어
@@ -210,3 +217,10 @@ UI 사이드바에서 성능 프로파일을 선택할 수 있습니다.
 
 > ⚠️ **full mode + High Accuracy**는 CPU 부하가 높습니다.
 > 일반 노트북에서는 **Standard** 또는 **Low Power**를 권장합니다.
+
+
+---
+
+**Thingswell Inc.** AI Solution Development Team  
+Copyright © 2026 Thingswell Inc. All rights reserved.  
+Contact: hjlee@thingswell.co.kr | Website: https://thingswell.co.kr
