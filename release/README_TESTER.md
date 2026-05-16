@@ -49,6 +49,35 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 
 ---
 
+## GitHub Release에서 다운로드하기
+
+### 다운로드 절차
+
+1. **GitHub Release 페이지 접속:**  
+   https://github.com/thingswell-hjlee/emotion-recognition/releases
+
+2. **최신 Release 확인:**  
+   `Emotion Recognition Beta Windows v0.1.0 - Thingswell Inc.` 클릭
+
+3. **Assets 섹션에서 ZIP 다운로드:**  
+   `emotion-recognition-beta-win64-v0.1.0-thingswell.zip` 클릭하여 다운로드
+
+4. **ZIP 압축 해제:**  
+   다운로드된 ZIP 파일을 **단순한 영문 경로**에 압축 해제하세요.
+
+> ⚠️ **경로 주의사항:**
+> - OneDrive 동기화 폴더에 두면 설치 중 파일 잠금 오류가 발생할 수 있습니다.
+> - 한글/특수문자/공백이 많은 경로에서는 일부 패키지 설치가 실패할 수 있습니다.
+> - **권장 경로:** `C:\thingswell_test\`
+> - 예: `C:\thingswell_test\emotion-recognition-beta-win64-v0.1.0-thingswell\`
+
+5. **이후 설치 및 실행은 아래 Step by Step 절차를 따르세요.**
+
+> 💡 최초 설치는 인터넷 연결이 필요하며, 5~15분 정도 소요됩니다.  
+> 💡 최초 STT 모델 다운로드에도 추가 시간(1~5분)이 필요합니다.
+
+---
+
 ## 설치 및 실행 절차 (Step by Step)
 
 ### Step 0: Python 3.11 설치 확인

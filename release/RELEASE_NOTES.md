@@ -1,7 +1,7 @@
 # Emotion Recognition Beta Windows v0.1.0 - Thingswell Inc.
 
-**Tag:** beta-win64-v0.1.0  
-**Asset:** emotion-recognition-beta-win64-v0.1.0-thingswell.zip  
+**Tag:** `beta-win64-v0.1.0`  
+**Asset:** `emotion-recognition-beta-win64-v0.1.0-thingswell.zip`  
 
 Produced by Thingswell Inc. AI Solution Development Team  
 Copyright © 2026 Thingswell Inc. All rights reserved.  
@@ -12,12 +12,17 @@ Website: https://thingswell.co.kr
 
 ## Purpose
 
-This release is for:
-- Internal reliability testing (신뢰성 시험)
-- Performance evaluation (성능 평가)
-- Functional verification (기능 검증)
-- Demonstration (데모)
-- Limited tester distribution (제한 배포)
+This release is for internal testing, functional verification, reliability testing, performance evaluation, and demonstration.
+
+---
+
+## Download
+
+Download the ZIP asset from the **Assets** section below:
+
+> **`emotion-recognition-beta-win64-v0.1.0-thingswell.zip`**
+
+After downloading, extract to a simple path (recommended: `C:\thingswell_test\`).
 
 ---
 
@@ -151,6 +156,17 @@ emotion-recognition-beta-win64-v0.1.0-thingswell/
 ├── requirements-stt-openai-optional.txt
 └── requirements.txt             # All dependencies
 ```
+
+---
+
+## Tester Feedback
+
+테스트 완료 후 아래 내용을 hjlee@thingswell.co.kr로 전달해 주세요:
+
+- 에러 발생 시 스크린샷
+- `collect_logs.bat`으로 생성된 `test_report/` 폴더 (ZIP 압축)
+- PC 환경 정보 (OS, Python 버전, RAM)
+- 어떤 모드/프로파일에서 문제가 발생했는지
 
 ---
 
