@@ -178,5 +178,21 @@ emotion-recognition/
 | 7 | DeepFace 설치 확인 | `pip install deepface` 후 face mode 재시도 |
 | 8 | minimal mode 테스트 | minimal은 더미 결과를 반환하므로 반드시 결과가 표시됨 |
 
-**로그에 "분석 루프 시작됨"이 없으면**: 카메라 초기화 실패. 카메라 인덱스를 0→1→2로 변경하세요.
-**로그에 "NO_FACE"만 반복되면**: 조명을 밝게 하고, 카메라 정면에서 30~60cm 거리를 유지하세요.
+## Troubleshooting: 음성 감정 결과가 불안정한 경우
+
+| # | 점검 항목 | 확인 방법 |
+|---|-----------|-----------|
+| 1 | 무음 테스트 | voice/full 모드에서 아무 말도 하지 않고 10초 대기 → "무음" 상태 확인 |
+| 2 | 마이크 입력 확인 | UI "마이크 입력 상태" 패널에서 RMS/peak 값 확인 |
+| 3 | RMS 임계값 조정 | silence_threshold가 너무 낮으면 소음이 발화로 인식됨 |
+| 4 | 유효 발화 확인 | voice_ratio > 0.20, valid_seconds > 2.0 인지 확인 |
+| 5 | 분류기 모드 확인 | "음성 모델: heuristic baseline" → 학습 모델 아님 (정상) |
+| 6 | confidence 확인 | low_confidence면 평균에서 낮은 가중치 적용 (정상) |
+| 7 | full mode 가중치 | voice_weight가 0.0~0.30인지 확인 (무음이면 0.0) |
+| 8 | librosa 설치 | `pip install librosa sounddevice` 필요 |
+
+**핵심 원칙**: 무음 상태에서는 어떤 감정 결과도 생성되지 않습니다.
+유효한 발화가 감지된 경우에만 음성 감정 분석이 수행됩니다.
+
+**로그에 "SILENCE_DETECTED" 또는 "INSUFFICIENT_VOICE_DATA"가 보이면**: 정상 동작입니다.
+**로그에 "EMOTION_CLASSIFIED"가 보이면**: 유효 발화 기반 분석이 수행된 것입니다.

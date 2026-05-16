@@ -88,6 +88,23 @@ devmgmt.msc
 python -c "import sounddevice; print(sounddevice.query_devices())"
 ```
 
+**마이크 입력 레벨 테스트 (5초):**
+```powershell
+python -c "
+import sounddevice as sd
+import numpy as np
+duration = 5
+sr = 16000
+print('5초간 마이크 입력 테스트...')
+audio = sd.rec(int(duration * sr), samplerate=sr, channels=1, dtype='float32')
+sd.wait()
+rms = float(np.sqrt(np.mean(audio**2)))
+peak = float(np.max(np.abs(audio)))
+print(f'RMS: {rms:.4f}, Peak: {peak:.3f}')
+print(f'무음 여부: {\"무음\" if rms < 0.015 else \"소리 감지됨\"}')
+"
+```
+
 ---
 
 ## 5. 문제 해결
