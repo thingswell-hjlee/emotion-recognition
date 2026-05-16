@@ -154,6 +154,19 @@ class Config:
     tts_max_repeat: int = 3
     tts_language: str = "ko"
 
+    # --- STT (음성 인식) 설정 ---
+    stt_enabled: bool = False                  # STT 기본 OFF (optional dependency)
+    stt_engine_type: str = "whisper-local"     # whisper-local / faster-whisper / disabled
+    stt_model_size: str = "base"              # tiny / base / small
+    stt_language: str = "ko"                  # 한국어 고정
+    stt_min_speech_seconds: float = 1.5       # STT 실행 최소 발화 길이 (초)
+    stt_history_size: int = 5                 # 최근 인식 문장 히스토리 크기
+
+    # --- 라이브 카메라 프리뷰 설정 ---
+    live_preview_enabled: bool = True         # 라이브 영상 표시 여부
+    live_preview_fps: int = 5                 # UI 프리뷰 FPS (낮을수록 부하 감소)
+    live_preview_width: int = 320             # 프리뷰 표시 너비 (px)
+
     # --- UI 설정 ---
     window_title: str = "Multimodal Emotion State Monitor"
     log_max_size: int = 50
@@ -192,6 +205,9 @@ class Config:
         self.smoothing_window = profile.smoothing_window
         self.confidence_threshold = profile.confidence_threshold
         self.cpu_saver = profile.cpu_saver
+        self.live_preview_enabled = profile.live_preview_enabled
+        self.live_preview_fps = profile.live_preview_fps
+        self.stt_enabled = profile.stt_enabled
 
     def apply_mode_defaults(self, run_mode: str):
         """

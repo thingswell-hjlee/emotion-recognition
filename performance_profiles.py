@@ -38,6 +38,13 @@ class PerformanceProfile:
     # CPU 절약
     cpu_saver: bool                 # True면 추가 sleep 삽입
 
+    # 라이브 프리뷰
+    live_preview_enabled: bool = True
+    live_preview_fps: int = 5       # UI 프리뷰 갱신 빈도
+
+    # STT
+    stt_enabled: bool = False       # 한국어 음성 인식
+
 
 # === 프로파일 정의 ===
 
@@ -53,6 +60,9 @@ PROFILE_LOW_POWER = PerformanceProfile(
     smoothing_window=5,
     confidence_threshold=0.5,
     cpu_saver=True,
+    live_preview_enabled=True,
+    live_preview_fps=3,
+    stt_enabled=False,
 )
 
 PROFILE_STANDARD = PerformanceProfile(
@@ -67,6 +77,9 @@ PROFILE_STANDARD = PerformanceProfile(
     smoothing_window=4,
     confidence_threshold=0.6,
     cpu_saver=False,
+    live_preview_enabled=True,
+    live_preview_fps=5,
+    stt_enabled=False,
 )
 
 PROFILE_HIGH_ACCURACY = PerformanceProfile(
@@ -81,6 +94,9 @@ PROFILE_HIGH_ACCURACY = PerformanceProfile(
     smoothing_window=3,
     confidence_threshold=0.6,
     cpu_saver=False,
+    live_preview_enabled=True,
+    live_preview_fps=5,
+    stt_enabled=True,
 )
 
 PROFILE_DEBUG = PerformanceProfile(
@@ -95,6 +111,9 @@ PROFILE_DEBUG = PerformanceProfile(
     smoothing_window=3,
     confidence_threshold=0.5,
     cpu_saver=False,
+    live_preview_enabled=True,
+    live_preview_fps=5,
+    stt_enabled=True,
 )
 
 # === 프로파일 조회 ===

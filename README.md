@@ -52,23 +52,34 @@ streamlit run ui/app.py
 
 ```powershell
 # DeepFace, TensorFlow 포함 (표정 분석 활성화)
-pip install -r requirements.txt
+pip install -r requirements-face.txt
 
-# 음성 분석 추가 (full mode용, 선택적)
-pip install librosa==0.10.1 sounddevice==0.4.7
+# 음성 분석 추가 (voice/full mode)
+pip install -r requirements-voice.txt
+
+# 한국어 STT 추가 (선택적)
+pip install -r requirements-stt.txt
 ```
 
-> 💡 `librosa`와 `sounddevice`는 full mode 음성 분석에만 필요합니다.
-> 미설치 시에도 표정 분석과 UI는 정상 동작합니다.
+> 💡 각 기능은 독립적으로 설치 가능합니다. 미설치 모듈은 자동 비활성화됩니다.
+
+### 단계별 설치 요약
+
+```powershell
+pip install -r requirements-minimal.txt   # UI + 카메라 (필수)
+pip install -r requirements-face.txt      # 표정 분석 (DeepFace)
+pip install -r requirements-voice.txt     # 음성 감정 분석 (librosa)
+pip install -r requirements-stt.txt       # 한국어 STT (Whisper)
+```
 
 ## 실행 모드
 
 | 모드 | 설명 | 필요 패키지 |
 |------|------|------------|
 | **minimal** (기본) | 카메라+UI+더미 분석, 첫 실행 권장 | requirements-minimal.txt |
-| face | 웹캠 표정 분석 (DeepFace) | requirements.txt |
-| voice | 마이크 음성 분석 (librosa) | requirements.txt + `pip install librosa sounddevice` |
-| full | 전체 기능 | requirements.txt + `pip install librosa sounddevice` |
+| face | 웹캠 표정 분석 (DeepFace) | + requirements-face.txt |
+| voice | 마이크 음성 분석 + STT | + requirements-voice.txt (+ requirements-stt.txt) |
+| full | 전체 기능 | 모두 설치 |
 
 > 🟢 **초기 기본값은 minimal mode**입니다. 첫 실행 성공 후 UI에서 모드를 변경할 수 있습니다.
 >
@@ -97,14 +108,26 @@ UI 사이드바에서 성능 프로파일을 선택하여 CPU 부하를 조절�
 
 ## 주요 기능
 
+- **라이브 카메라 프리뷰**: 웹캠 영상을 UI에 실시간 표시
 - **표정 감정 분석**: 9가지 감정 분류 (DeepFace + 더미 폴백)
 - **음성 감정 분석**: 음성 톤/에너지 기반 분류
+- **한국어 STT**: Whisper 기반 음성→텍스트 변환 (로컬 실행)
 - **멀티모달 통합**: 표정 60% + 음성 40% 가중 평균
 - **LSTM 감정 예측**: 시계열 기반 예측 (모델 없으면 이동평균 폴백)
 - **음성 안내**: pyttsx3 TTS (기본 OFF, 선택적 활성화)
 - **결과 안정화**: 이동평균 + confidence threshold로 노이즈 제거
 - **성능 프로파일**: 4단계 부하 조절 (Low Power ~ High Accuracy)
 - **Streamlit UI**: 설정, 제어, 결과 표시, 실시간 상태 바
+
+## 한국어 STT (음성 인식)
+
+- OpenAI Whisper 또는 faster-whisper 기반 로컬 STT
+- VAD가 유효 발화를 감지한 경우에만 STT 실행 (무음 시 실행 안 함)
+- 모델 크기: tiny (~75MB) / base (~150MB) / small (~500MB)
+- 기본값: base 모델 (CPU 환경 적합)
+- 최초 실행 시 모델 자동 다운로드 (인터넷 필요)
+- CPU 환경에서 small 이상은 느릴 수 있음 → 일반 노트북에서는 tiny/base 권장
+- 외부 서버 전송 없음 (완전 로컬 처리)
 
 ## 개인정보 보호
 

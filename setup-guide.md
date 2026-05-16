@@ -39,15 +39,18 @@ streamlit run ui/app.py
 
 ```powershell
 # 표정 분석 (face mode, full mode) - DeepFace + TensorFlow
-pip install -r requirements.txt
+pip install -r requirements-face.txt
 
 # 음성 분석 (voice mode, full mode) - librosa + sounddevice
-pip install librosa==0.10.1 sounddevice==0.4.7
+pip install -r requirements-voice.txt
+
+# 한국어 STT (선택적) - Whisper 로컬 모델
+pip install -r requirements-stt.txt
 ```
 
-> **참고**: `librosa`와 `sounddevice`는 requirements.txt에 포함되어 있지만,
-> 설치 실패하더라도 표정 분석과 UI는 정상 동작합니다.
-> full mode에서 음성 분석이 비활성화되면 "sounddevice 미설치" 메시지가 표시됩니다.
+> **참고**: 각 기능은 독립적으로 설치 가능합니다. 미설치 모듈은 자동 비활성화됩니다.
+> STT 모델은 최초 실행 시 자동 다운로드됩니다 (base 모델: ~150MB, 인터넷 필요).
+> CPU 환경에서 small 이상 모델은 추론이 느릴 수 있습니다 → tiny/base 권장.
 
 ---
 

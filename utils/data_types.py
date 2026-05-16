@@ -78,6 +78,13 @@ class AppState:
     # 음성 파이프라인 상태 (새)
     voice_pipeline_state: Optional[object] = None  # VoicePipelineState
 
+    # STT 결과
+    stt_latest: Optional[object] = None       # STTResult
+    stt_history: list = field(default_factory=list)  # List[STTResult]
+
+    # 라이브 프리뷰
+    latest_frame: Optional[object] = None     # numpy array (BGR)
+
     # 로그
     log_messages: List[str] = field(default_factory=list)
 

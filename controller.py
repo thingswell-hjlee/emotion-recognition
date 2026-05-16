@@ -57,6 +57,13 @@ class EmotionController:
         self._voice_pipeline = None
         self._voice_averager = None
 
+        # STT 엔진
+        self._stt_engine = None
+        self._stt_history = None
+
+        # 라이브 프리뷰용 최신 프레임
+        self._latest_frame = None
+
         # 타이머
         self._timer = CycleTimer(
             cycle_seconds=self.config.cycle_seconds,
@@ -108,6 +115,9 @@ class EmotionController:
 
         # TTS
         self._init_voice_feedback()
+
+        # STT
+        self._init_stt()
 
         self.logger.info("시스템 초기화 완료")
         self._notify_state()
@@ -215,6 +225,26 @@ class EmotionController:
         except Exception as e:
             self.logger.error(f"TTS 초기화 실패: {e}")
             self._voice_feedback = None
+
+    def _init_stt(self):
+        """STT 엔진 초기화 (optional, 실패해도 앱 계속)"""
+        try:
+            from modules.stt_engine import create_stt_engine, STTHistory
+            self._stt_engine = create_stt_engine(self.config)
+            self._stt_history = STTHistory(max_size=self.config.stt_history_size)
+
+            if self._stt_engine.is_ready and self.config.stt_enabled:
+                self.logger.info(f"[STT] 초기화 완료 (engine: {self._stt_engine.engine_name})")
+            elif self._stt_engine.init_error:
+                self.logger.warning(f"[STT] {self._stt_engine.init_error}")
+        except ImportError:
+            self.logger.info("[STT] STT 모듈 미설치 (optional)")
+            self._stt_engine = None
+            self._stt_history = None
+        except Exception as e:
+            self.logger.error(f"[STT] 초기화 실패: {e}")
+            self._stt_engine = None
+            self._stt_history = None
 
     # ================================================================
     # 시작 / 정지
@@ -387,6 +417,10 @@ class EmotionController:
                 retry_count = 0
                 self._frame_count += 1
 
+                # 라이브 프리뷰용 프레임 저장 (매 프레임)
+                if self.config.live_preview_enabled:
+                    self.state.latest_frame = frame
+
                 # 프레임 스킵
                 if self._frame_count % self.config.analysis_skip_frames != 0:
                     time.sleep(cpu_saver_sleep)
@@ -490,6 +524,32 @@ class EmotionController:
                 # 파이프라인 로그를 app 로그에 추가
                 for msg in self._voice_pipeline.state.log_messages:
                     self.state.add_log(msg)
+
+                # ① -b. STT 실행 (VAD가 유효 발화일 때만)
+                if (self.config.stt_enabled and self._stt_engine and
+                        self._stt_engine.is_ready and
+                        voice_result.status in ("EMOTION_CLASSIFIED", "LOW_CONFIDENCE")):
+                    try:
+                        # VAD 유효 발화 시간이 STT 최소 기준 충족하는지 확인
+                        vad = getattr(self._voice_pipeline.state, 'vad_result', None)
+                        valid_sec = vad.valid_seconds if vad else 0.0
+
+                        if valid_sec >= self.config.stt_min_speech_seconds:
+                            stt_result = self._stt_engine.transcribe(audio, self.config.audio_sample_rate)
+                            self.state.stt_latest = stt_result
+                            self.state.add_log(stt_result.to_log_string())
+
+                            if self._stt_history:
+                                self._stt_history.add(stt_result)
+                                self.state.stt_history = self._stt_history.get_recent()
+                        else:
+                            from modules.stt_engine import STTResult, STT_SILENCE
+                            self.state.stt_latest = STTResult(
+                                status=STT_SILENCE,
+                                error_message=f"발화 {valid_sec:.1f}s < 최소 {self.config.stt_min_speech_seconds}s"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"[STT] 실행 실패: {e}")
 
             except Exception as e:
                 self.logger.error(f"음성 파이프라인 실패: {e}")

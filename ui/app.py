@@ -257,6 +257,10 @@ def main():
     # === 결과 표시 ===
     render_results(state)
 
+    # === 라이브 카메라 프리뷰 ===
+    if st.session_state.current_mode in (RUN_MODE_MINIMAL, RUN_MODE_FACE, RUN_MODE_FULL):
+        render_live_preview(state)
+
     # === 입력 상태 (마이크) ===
     if st.session_state.current_mode in (RUN_MODE_VOICE, RUN_MODE_FULL, "minimal"):
         render_mic_status(state)
@@ -264,6 +268,10 @@ def main():
     # === 음성 분석 상세 ===
     if st.session_state.current_mode in (RUN_MODE_VOICE, RUN_MODE_FULL):
         render_voice_pipeline(state)
+
+    # === STT 한국어 인식 ===
+    if st.session_state.current_mode in (RUN_MODE_VOICE, RUN_MODE_FULL):
+        render_stt_panel(state)
 
     # === 감정 차트 ===
     render_chart(state)
@@ -414,6 +422,10 @@ def render_sidebar():
             st.session_state.camera_enabled = st.toggle(
                 "카메라", value=st.session_state.camera_enabled, key="sb_cam_on"
             )
+            st.toggle(
+                "라이브 프리뷰", value=True, key="sb_preview_on",
+                help="카메라 영상을 UI에 표시"
+            )
             st.session_state.face_analysis_enabled = st.toggle(
                 "표정 분석 (DeepFace)", value=st.session_state.face_analysis_enabled, key="sb_face_on"
             )
@@ -422,6 +434,10 @@ def render_sidebar():
             )
             st.session_state.audio_analysis_enabled = st.toggle(
                 "음성 분석 (librosa)", value=st.session_state.audio_analysis_enabled, key="sb_voice_on"
+            )
+            st.toggle(
+                "STT (한국어 인식)", value=False, key="sb_stt_on",
+                help="whisper 기반 음성→텍스트 변환"
             )
             st.divider()
 
@@ -714,6 +730,100 @@ def render_voice_pipeline(state: AppState):
             f"신뢰도 등급: {emotion_result.confidence_tier} | "
             f"근거: {emotion_result.reason}"
         )
+
+
+# ============================================================
+# 라이브 카메라 프리뷰
+# ============================================================
+
+def render_live_preview(state: AppState):
+    """웹캠 라이브 영상 표시 (st.image 기반)"""
+    st.divider()
+    st.subheader("📷 라이브 카메라")
+
+    frame = getattr(state, 'latest_frame', None)
+
+    if frame is None:
+        if not st.session_state.is_running:
+            st.info("시작 버튼을 눌러 카메라를 활성화하세요.")
+        else:
+            st.info(f"카메라 상태: {state.face_status}")
+        return
+
+    try:
+        import cv2
+        # BGR → RGB 변환
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # 프리뷰 크기 조정
+        controller = st.session_state.controller
+        preview_width = 320
+        if controller:
+            preview_width = controller.config.live_preview_width
+
+        st.image(frame_rgb, caption=f"Live | {state.face_status}", width=preview_width)
+
+    except Exception as e:
+        st.caption(f"프리뷰 표시 오류: {e}")
+
+
+# ============================================================
+# STT 한국어 인식 패널
+# ============================================================
+
+def render_stt_panel(state: AppState):
+    """STT 인식 결과 + 히스토리 표시"""
+    st.divider()
+    st.subheader("🗣️ 한국어 음성 인식 (STT)")
+
+    # 엔진 상태 표시
+    controller = st.session_state.controller
+    if controller and hasattr(controller, '_stt_engine') and controller._stt_engine:
+        engine = controller._stt_engine
+        if not controller.config.stt_enabled:
+            st.caption("STT: ⚪ 비활성화")
+            return
+        st.caption(f"STT 엔진: **{engine.engine_name}** | 상태: {'✅ 준비' if engine.is_ready else '❌ 미로드'}")
+        if engine.init_error:
+            st.warning(f"⚠️ {engine.init_error}")
+            return
+    else:
+        st.info("STT 미설치 또는 비활성화. `pip install -r requirements-stt.txt`로 설치하세요.")
+        return
+
+    # 최신 결과
+    stt_latest = getattr(state, 'stt_latest', None)
+    if stt_latest:
+        if stt_latest.status == "OK" and stt_latest.text:
+            st.success(f"📝 \"{stt_latest.text}\"")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.caption(f"시간: {stt_latest.timestamp.strftime('%H:%M:%S')}")
+            with col2:
+                conf_str = f"{stt_latest.confidence:.0%}" if stt_latest.confidence else "N/A"
+                st.caption(f"신뢰도: {conf_str} | 길이: {stt_latest.duration_sec:.1f}s")
+        elif stt_latest.status == "SILENCE_DETECTED":
+            st.caption("🔇 무음 감지 - STT 대기 중")
+        elif stt_latest.status == "STT_DISABLED":
+            st.caption("⚪ STT 비활성화")
+        elif stt_latest.status == "PROCESSING":
+            st.caption("⏳ 인식 중...")
+        elif stt_latest.status == "STT_MODEL_NOT_LOADED":
+            st.warning(f"⚠️ 모델 미로드: {stt_latest.error_message}")
+        elif stt_latest.status == "STT_ERROR":
+            st.error(f"❌ STT 오류: {stt_latest.error_message}")
+        else:
+            st.caption(f"상태: {stt_latest.status}")
+    else:
+        st.caption("대기 중... (유효 발화 감지 시 자동 실행)")
+
+    # 히스토리 (최근 5개)
+    stt_history = getattr(state, 'stt_history', [])
+    if stt_history:
+        with st.expander(f"최근 인식 기록 ({len(stt_history)}개)", expanded=False):
+            for i, result in enumerate(stt_history):
+                time_str = result.timestamp.strftime('%H:%M:%S')
+                st.caption(f"[{time_str}] {result.text}")
 
 
 # ============================================================
