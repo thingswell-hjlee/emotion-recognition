@@ -57,6 +57,11 @@ def init_session_state():
         "tts_enabled": False,
         "camera_device_id": 0,
         "resolution_key": "480x360 (Medium)",
+        # STT 설정
+        "stt_enabled": False,
+        "stt_engine_type": "faster-whisper",
+        "stt_model_size": "base",
+        "stt_self_test_running": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -101,6 +106,11 @@ def _build_config_from_state() -> Config:
 
     # 프로파일 값 적용
     config.apply_profile(st.session_state.performance_profile)
+
+    # STT 설정 적용
+    config.stt_enabled = st.session_state.get("stt_enabled", False)
+    config.stt_engine_type = st.session_state.get("stt_engine_type", "faster-whisper")
+    config.stt_model_size = st.session_state.get("stt_model_size", "base")
 
     # 모드 기본값 적용 (debug가 아닌 경우)
     if st.session_state.performance_profile != "debug":
@@ -460,7 +470,76 @@ def render_sidebar():
             hot_update_slider(st.session_state.controller, "tts_volume", new_vol)
 
         st.divider()
-        st.caption("v0.2.0 | Python 3.11 권장")
+
+        # --- STT 설정 ---
+        st.subheader("🗣️ STT 설정")
+
+        # STT ON/OFF
+        stt_on = st.toggle(
+            "STT 사용",
+            value=st.session_state.get("stt_enabled", False),
+            key="sb_stt_enabled",
+            help="한국어 음성 인식 (faster-whisper 기반)",
+        )
+        if stt_on != st.session_state.get("stt_enabled", False):
+            st.session_state.stt_enabled = stt_on
+            # controller hot-update
+            controller = st.session_state.controller
+            if controller:
+                controller.config.stt_enabled = stt_on
+
+        # STT Engine 선택
+        engine_options = ["faster-whisper", "whisper-local", "auto", "disabled"]
+        current_engine = st.session_state.get("stt_engine_type", "faster-whisper")
+        if current_engine not in engine_options:
+            current_engine = "faster-whisper"
+        new_engine = st.selectbox(
+            "STT Engine",
+            options=engine_options,
+            index=engine_options.index(current_engine),
+            key="sb_stt_engine",
+        )
+        if new_engine != st.session_state.get("stt_engine_type", "faster-whisper"):
+            st.session_state.stt_engine_type = new_engine
+
+        # STT Model 크기
+        model_options = ["tiny", "base", "small"]
+        current_model = st.session_state.get("stt_model_size", "base")
+        if current_model not in model_options:
+            current_model = "base"
+        new_model = st.selectbox(
+            "STT Model",
+            options=model_options,
+            index=model_options.index(current_model),
+            key="sb_stt_model",
+            help="tiny: 빠름/정확도↓, base: 균형, small: 느림/정확도↑",
+        )
+        if new_model != st.session_state.get("stt_model_size", "base"):
+            st.session_state.stt_model_size = new_model
+
+        # STT Language
+        st.text_input("STT Language", value="ko", disabled=True, key="sb_stt_lang")
+
+        # STT Self Test 버튼
+        if st.button("🧪 STT Self Test", key="sb_stt_selftest", use_container_width=True):
+            st.session_state.stt_self_test_running = True
+            st.rerun()
+
+        # Self Test 결과 표시
+        if st.session_state.get("stt_self_test_running", False):
+            st.session_state.stt_self_test_running = False
+            with st.spinner("STT 셀프 테스트 중..."):
+                try:
+                    from modules.stt_engine import run_stt_self_test
+                    test_results = run_stt_self_test()
+                    for r in test_results:
+                        icon = "✅" if r.success else "❌"
+                        st.caption(f"{icon} {r.step}: {r.message} ({r.duration_ms:.0f}ms)")
+                except Exception as e:
+                    st.error(f"셀프 테스트 오류: {e}")
+
+        st.divider()
+        st.caption("v0.3.0 | Python 3.11 권장")
 
 
 # ============================================================
@@ -772,29 +851,75 @@ def render_live_preview(state: AppState):
 # ============================================================
 
 def render_stt_panel(state: AppState):
-    """STT 인식 결과 + 히스토리 표시"""
+    """STT 인식 결과 + 상태 정보 + 히스토리 표시"""
     st.divider()
     st.subheader("🗣️ 한국어 음성 인식 (STT)")
 
-    # 엔진 상태 표시
+    # 엔진 상태 정보 표시
     controller = st.session_state.controller
-    if controller and hasattr(controller, '_stt_engine') and controller._stt_engine:
-        engine = controller._stt_engine
-        if not controller.config.stt_enabled:
-            st.caption("STT: ⚪ 비활성화")
+    stt_engine = None
+    if controller and hasattr(controller, '_stt_engine'):
+        stt_engine = controller._stt_engine
+
+    # STTEngineInfo 가져오기
+    try:
+        from modules.stt_engine import (
+            get_stt_engine_info, faster_whisper_available, openai_whisper_available,
+            STT_STATUS_MESSAGES, STT_OK, STT_READY, STT_DISABLED_BY_MODE,
+            STT_DISABLED_BY_USER, STT_ENGINE_NOT_INSTALLED, STT_MODEL_NOT_LOADED,
+            STT_WAITING_FOR_SPEECH, STT_TRANSCRIBING,
+        )
+
+        config = controller.config if controller else Config()
+        info = get_stt_engine_info(config, stt_engine)
+
+        # 상태 정보 테이블
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption(f"STT installed: {'✅' if info.faster_whisper_available or info.openai_whisper_available else '❌'}")
+            st.caption(f"STT engine: **{info.selected_engine}**")
+            st.caption(f"STT model loaded: {'✅' if info.model_loaded else '❌'}")
+        with col2:
+            st.caption(f"Enabled by mode: {'✅' if info.stt_enabled_by_mode else '❌'}")
+            st.caption(f"Enabled by user: {'✅' if info.stt_enabled_by_user else '❌'}")
+            status_msg = STT_STATUS_MESSAGES.get(info.current_status, info.current_status)
+            status_icon = {
+                STT_OK: "✅", STT_READY: "✅",
+                STT_WAITING_FOR_SPEECH: "⏳", STT_TRANSCRIBING: "🔄",
+                STT_DISABLED_BY_MODE: "⚪", STT_DISABLED_BY_USER: "⚪",
+                STT_ENGINE_NOT_INSTALLED: "❌", STT_MODEL_NOT_LOADED: "⚠️",
+            }.get(info.current_status, "❓")
+            st.caption(f"Status: {status_icon} {status_msg}")
+
+        # 엔진 경고
+        if info.init_error:
+            st.warning(f"⚠️ {info.init_error}")
             return
-        st.caption(f"STT 엔진: **{engine.engine_name}** | 상태: {'✅ 준비' if engine.is_ready else '❌ 미로드'}")
-        if engine.init_error:
-            st.warning(f"⚠️ {engine.init_error}")
+
+        if info.current_status == STT_ENGINE_NOT_INSTALLED:
+            st.info(
+                "STT 엔진이 설치되지 않았습니다.\n\n"
+                "**설치 방법:** `pip install -r requirements-stt.txt`\n\n"
+                "faster-whisper 기반 (Windows 11 호환)"
+            )
             return
-    else:
-        st.info("STT 미설치 또는 비활성화. `pip install -r requirements-stt.txt`로 설치하세요.")
+
+        if info.current_status == STT_DISABLED_BY_MODE:
+            st.caption("ℹ️ voice 또는 full 모드에서 STT가 활성화됩니다.")
+            return
+
+        if info.current_status == STT_DISABLED_BY_USER:
+            st.caption("ℹ️ 사이드바에서 STT를 켜세요.")
+            return
+
+    except ImportError:
+        st.info("STT 모듈 로드 실패")
         return
 
     # 최신 결과
     stt_latest = getattr(state, 'stt_latest', None)
     if stt_latest:
-        if stt_latest.status == "OK" and stt_latest.text:
+        if stt_latest.status == STT_OK and stt_latest.text:
             st.success(f"📝 \"{stt_latest.text}\"")
             col1, col2 = st.columns(2)
             with col1:
@@ -802,20 +927,18 @@ def render_stt_panel(state: AppState):
             with col2:
                 conf_str = f"{stt_latest.confidence:.0%}" if stt_latest.confidence else "N/A"
                 st.caption(f"신뢰도: {conf_str} | 길이: {stt_latest.duration_sec:.1f}s")
-        elif stt_latest.status == "SILENCE_DETECTED":
+        elif stt_latest.status in ("SILENCE_DETECTED", "STT_WAITING_FOR_SPEECH"):
             st.caption("🔇 무음 감지 - STT 대기 중")
-        elif stt_latest.status == "STT_DISABLED":
-            st.caption("⚪ STT 비활성화")
-        elif stt_latest.status == "PROCESSING":
+        elif stt_latest.status == STT_TRANSCRIBING:
             st.caption("⏳ 인식 중...")
-        elif stt_latest.status == "STT_MODEL_NOT_LOADED":
+        elif stt_latest.status == STT_MODEL_NOT_LOADED:
             st.warning(f"⚠️ 모델 미로드: {stt_latest.error_message}")
-        elif stt_latest.status == "STT_ERROR":
+        elif "ERROR" in stt_latest.status:
             st.error(f"❌ STT 오류: {stt_latest.error_message}")
         else:
             st.caption(f"상태: {stt_latest.status}")
     else:
-        st.caption("대기 중... (유효 발화 감지 시 자동 실행)")
+        st.caption("⏳ 대기 중... (유효 발화 감지 시 자동 실행)")
 
     # 히스토리 (최근 5개)
     stt_history = getattr(state, 'stt_history', [])

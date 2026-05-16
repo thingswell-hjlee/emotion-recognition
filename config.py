@@ -163,7 +163,7 @@ class Config:
 
     # --- STT (음성 인식) 설정 ---
     stt_enabled: bool = False                  # STT 기본 OFF (optional dependency)
-    stt_engine_type: str = "whisper-local"     # whisper-local / faster-whisper / disabled
+    stt_engine_type: str = "faster-whisper"    # faster-whisper / whisper-local / auto / disabled
     stt_model_size: str = "base"              # tiny / base / small
     stt_language: str = "ko"                  # 한국어 고정
     stt_min_speech_seconds: float = 1.5       # STT 실행 최소 발화 길이 (초)

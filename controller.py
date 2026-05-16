@@ -275,18 +275,42 @@ class EmotionController:
             self._voice_feedback = None
 
     def _init_stt(self):
-        """STT 엔진 초기화 (optional, 실패해도 앱 계속)"""
+        """STT 엔진 초기화 (optional, 실패해도 앱 계속) - 상세 로그 포함"""
         try:
-            from modules.stt_engine import create_stt_engine, STTHistory
+            from modules.stt_engine import (
+                create_stt_engine, STTHistory,
+                faster_whisper_available, openai_whisper_available,
+                detect_best_engine,
+            )
+
+            # 엔진 사용 가능 여부 로그
+            self.logger.info(f"[STT] faster_whisper_available={faster_whisper_available}")
+            self.logger.info(f"[STT] openai_whisper_available={openai_whisper_available}")
+
+            best = detect_best_engine()
+            self.logger.info(f"[STT] detected_best_engine={best}")
+            self.logger.info(f"[STT] config.stt_engine_type={self.config.stt_engine_type}")
+            self.logger.info(f"[STT] config.stt_enabled={self.config.stt_enabled}")
+
+            # 엔진 생성
             self._stt_engine = create_stt_engine(self.config)
             self._stt_history = STTHistory(max_size=self.config.stt_history_size)
 
+            # 상태 로그
+            selected = self._stt_engine.engine_name
+            self.logger.info(f"[STT] selected_engine={selected}")
+
             if self._stt_engine.is_ready and self.config.stt_enabled:
-                self.logger.info(f"[STT] 초기화 완료 (engine: {self._stt_engine.engine_name})")
+                self.logger.info(f"[STT] status=STT_READY engine={selected}")
             elif self._stt_engine.init_error:
-                self.logger.warning(f"[STT] {self._stt_engine.init_error}")
+                self.logger.warning(f"[STT] status=INIT_ERROR reason={self._stt_engine.init_error}")
+            elif not self.config.stt_enabled:
+                self.logger.info(f"[STT] status=STT_DISABLED_BY_USER")
+            else:
+                self.logger.info(f"[STT] status=ENGINE_CREATED engine={selected}")
+
         except ImportError:
-            self.logger.info("[STT] STT 모듈 미설치 (optional)")
+            self.logger.info("[STT] STT 모듈 import 실패 (optional)")
             self._stt_engine = None
             self._stt_history = None
         except Exception as e:

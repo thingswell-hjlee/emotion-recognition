@@ -1,0 +1,10 @@
+# requirements-stt-openai-optional.txt
+# OpenAI Whisper (선택적 fallback 엔진)
+#
+# ⚠️ Windows 11 + Python 3.11에서 설치 실패할 수 있습니다.
+# ⚠️ faster-whisper를 사용할 수 없는 경우에만 설치하세요.
+# ⚠️ 설치 전 ffmpeg이 필요합니다: https://ffmpeg.org/download.html
+#
+# 설치: pip install -r requirements-stt-openai-optional.txt
+
+openai-whisper==20231117
