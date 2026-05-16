@@ -111,16 +111,15 @@ if "!STATUS!"=="NOT_READY" (
 REM ── 결과 파일 저장 ──
 (
     echo Health Check Results
-    echo ─────────────────────
     echo Date: %DATE% %TIME%
-    echo Python: & "%PY%" --version 2>&1
     echo.
     echo PASS: %PASS%  FAIL: %FAIL%  SKIP: %SKIP%
     echo STATUS: !STATUS!
     echo.
-    echo [필수] streamlit, cv2, numpy
-    echo [옵션] deepface, tf_keras, sounddevice, librosa, faster_whisper
+    echo [Required] streamlit, cv2, numpy
+    echo [Optional] deepface, tf_keras, sounddevice, librosa, faster_whisper
 ) > "logs\health_check.txt"
+"%PY%" --version >> "logs\health_check.txt" 2>&1
 
 echo.
 echo   결과 저장: logs\health_check.txt

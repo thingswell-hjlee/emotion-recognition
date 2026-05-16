@@ -14,7 +14,7 @@ streamlit>=1.31.0,<2.0.0
 opencv-python>=4.9.0,<5.0.0
 
 # 수치 연산
-numpy>=1.26.0,<2.0.0
+numpy>=1.26.0
 pandas>=2.2.0,<3.0.0
 
 # 음성 합성 (TTS, 기본 OFF)

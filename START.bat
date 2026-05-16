@@ -129,9 +129,8 @@ if not exist ".venv\Scripts\python.exe" (
 )
 echo.
 
-REM .venv python/pip 경로 설정
+REM .venv python 경로 설정
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
-set "VENV_PIP=%~dp0.venv\Scripts\python.exe" -m pip
 
 REM ══════════════════════════════════════════════════
 REM  Phase 3: 패키지 설치
