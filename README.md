@@ -129,42 +129,51 @@ UI 사이드바에서 성능 프로파일을 선택하여 CPU 부하를 조절�
 - CPU 환경에서 small 이상은 느릴 수 있음 → 일반 노트북에서는 tiny/base 권장
 - 외부 서버 전송 없음 (완전 로컬 처리)
 
-### 실시간 STT 트리거 엔진 (v0.4)
+### 실시간 STT 파이프라인 (v0.5 - 안정화)
 
-voice/full/debug 모드에서 자동 활성화되는 실시간 음성 인식:
+voice/full/debug 모드에서 자동 활성화되는 신뢰성 중심 음성 인식:
 
 ```
-Audio Stream (100ms chunks) → VAD State Machine → STT Worker (background thread)
-                                    ↓
-                            pre-roll 500ms 포함
-                            speech segment 누적
-                            SPEECH_END 감지 → queue → faster-whisper transcribe
+AudioStreamWorker     →  VADStateMachine  →  SpeechSegmentBuffer  →  STTWorker
+(background stream)      (state machine)      (pre-roll + accumulate)   (background thread)
+  100ms chunks            7 states             quality scoring           faster-whisper
+  RMS/peak/dBFS          adaptive noise        segment metadata          queue (max 3)
+  ring buffer 30s        floor learning        reason codes              non-blocking
 ```
 
-**VAD 상태 머신:**
-- `SILENCE`: adaptive noise floor 학습, pre-roll buffer 유지
-- `SPEECH_START`: RMS > noise_floor × 3.0 감지 → pre-roll 포함 시작
-- `SPEAKING`: 음성 누적 중 (최대 30초)
-- `SPEECH_END`: 1.5초 무음 → segment 완성 → STT queue 전달
+**VAD 상태 머신 (7 states):**
+- `IDLE`: 무음, noise floor 학습 중
+- `POSSIBLE_SPEECH`: RMS > threshold 감지, 확인 대기 (300ms)
+- `SPEECH_ACTIVE`: 발화 확인됨, 녹음 중
+- `POSSIBLE_END`: 짧은 무음 감지, 재개 또는 종료 판단
+- `SPEECH_ENDED`: 발화 종료 → STT queue에 전달 (transient)
+- `SILENCE`: 확인된 무음 상태
+- `NOISE_ONLY`: 소음은 있으나 발화 아님
 
-**설정 (`config.py`):**
-```python
-stt_rt_chunk_ms = 100              # audio chunk 크기
-stt_rt_pre_roll_sec = 0.5          # pre-roll buffer
-stt_rt_silence_timeout_sec = 1.5   # 무음→종료 타임아웃
-stt_rt_min_speech_sec = 0.8        # 최소 segment 길이
-stt_rt_noise_floor_factor = 3.0    # speech threshold 배수
-stt_rt_model_size = "tiny"         # 실시간용 모델 (tiny 권장)
-```
+**Adaptive Noise Floor:**
+- 무음 구간에서 자동으로 배경소음 레벨 학습
+- `speech_threshold = noise_floor × factor + margin`
+- median 기반으로 outlier에 강인
 
-**UI 표시 항목:**
-- VAD 상태 (SILENCE/SPEAKING 등)
-- 현재 segment 길이
-- STT queue 크기
-- 모델 로드 상태
-- 마지막 인식 한국어 텍스트
+**Segment 유효성 검사:**
+- `TOO_SHORT`: 1000ms 미만 → STT 안 함
+- `TOO_LONG`: 10000ms 초과 → 강제 종료
+- `LOW_ENERGY`: RMS 너무 낮음
+- `NOISE_ONLY`: voice_ratio < 20%
+- `OK`: STT 실행
 
-**STT Self Test:** 사이드바 버튼으로 import → 모델 로드 → transcribe → 마이크 확인
+**Troubleshooting - 말했는데 인식 안 될 때:**
+1. UI에서 RMS가 0.01 이상 나오는지 확인
+2. noise_floor보다 RMS가 높은지 확인
+3. VAD가 SPEECH_ACTIVE로 변하는지 확인
+4. segment_duration이 1000ms 이상인지 확인
+5. STT queue에 들어갔는지 확인 (queue_size > 0)
+6. STT model loaded가 ✅인지 확인
+
+**Troubleshooting - 무음인데 인식될 때:**
+1. noise_floor이 너무 낮지 않은지 확인 (< 0.003이면 비정상)
+2. 환풍기/에어컨 소음이 speech로 오인되는 경우 → stt_rt_noise_floor_factor 올리기
+3. min_valid_segment_ms를 1500으로 올리기
 
 ## 개인정보 보호
 

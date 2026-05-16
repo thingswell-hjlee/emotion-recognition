@@ -63,8 +63,11 @@ class EmotionController:
         self._stt_engine = None
         self._stt_history = None
 
-        # 실시간 STT 트리거 엔진 (VAD + background worker)
+        # 실시간 STT 트리거 엔진 (VAD + background worker) - legacy
         self._stt_realtime = None
+
+        # 새 안정화된 음성 STT 파이프라인 (v2)
+        self._voice_stt_pipeline = None
 
         # 적응형 스케줄러 (분석 주기 동적 조절)
         self._adaptive_scheduler = None
@@ -139,6 +142,7 @@ class EmotionController:
         # 실시간 STT (voice/full/debug 모드에서만)
         if self.config.run_mode in (RUN_MODE_VOICE, RUN_MODE_FULL) or self.config.performance_profile == "debug":
             self._init_stt_realtime()
+            self._init_voice_stt_pipeline()
 
         self.logger.info("시스템 초기화 완료")
         self._notify_state()
@@ -338,6 +342,29 @@ class EmotionController:
             self.logger.error(f"[STT-RT] 초기화 실패: {e}")
             self._stt_realtime = None
 
+    def _init_voice_stt_pipeline(self):
+        """새 안정화 음성 STT 파이프라인 초기화 (voice/full/debug 모드)"""
+        try:
+            from modules.voice_stt_pipeline import VoiceSTTPipeline
+            self._voice_stt_pipeline = VoiceSTTPipeline(
+                sample_rate=self.config.audio_sample_rate,
+                chunk_duration_ms=getattr(self.config, 'stt_rt_chunk_ms', 100),
+                stt_model_size=getattr(self.config, 'stt_rt_model_size', 'tiny'),
+                stt_enabled=self.config.stt_enabled,
+                pre_roll_ms=int(getattr(self.config, 'stt_rt_pre_roll_sec', 0.5) * 1000),
+                device_id=self.config.audio_device_id,
+                min_valid_segment_ms=getattr(self.config, 'stt_rt_min_speech_sec', 0.8) * 1000,
+                max_segment_ms=getattr(self.config, 'stt_rt_max_speech_sec', 30.0) * 1000,
+                end_silence_ms=getattr(self.config, 'stt_rt_silence_timeout_sec', 1.5) * 1000,
+            )
+            self.logger.info("[PIPELINE] 음성 STT 파이프라인 인스턴스 생성 완료")
+        except ImportError as e:
+            self.logger.info(f"[PIPELINE] 모듈 import 실패: {e}")
+            self._voice_stt_pipeline = None
+        except Exception as e:
+            self.logger.error(f"[PIPELINE] 초기화 실패: {e}")
+            self._voice_stt_pipeline = None
+
     # ================================================================
     # 시작 / 정지
     # ================================================================
@@ -387,6 +414,14 @@ class EmotionController:
             except Exception as e:
                 self.logger.error(f"[STT-RT] 시작 실패: {e}")
 
+        # 새 음성 STT 파이프라인 시작
+        if self._voice_stt_pipeline:
+            try:
+                self._voice_stt_pipeline.start()
+                self.state.add_log("[PIPELINE] 음성 STT 파이프라인 시작")
+            except Exception as e:
+                self.logger.error(f"[PIPELINE] 시작 실패: {e}")
+
         self.logger.info(f"분석 시작 (모드: {self.config.run_mode}, 주기: {self.config.cycle_seconds}초)")
         self._notify_state()
 
@@ -404,6 +439,13 @@ class EmotionController:
         if self._stt_realtime:
             try:
                 self._stt_realtime.stop()
+            except Exception:
+                pass
+
+        # 새 음성 STT 파이프라인 정지
+        if self._voice_stt_pipeline:
+            try:
+                self._voice_stt_pipeline.stop()
             except Exception:
                 pass
 

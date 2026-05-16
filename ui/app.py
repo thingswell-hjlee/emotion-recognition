@@ -851,109 +851,118 @@ def render_live_preview(state: AppState):
 # ============================================================
 
 def render_stt_panel(state: AppState):
-    """실시간 STT 패널: VAD 상태, segment duration, queue size, model loaded, last Korean text"""
+    """음성 입력 진단 패널: Audio stream, VAD, STT 상태를 종합 표시"""
     st.divider()
-    st.subheader("🗣️ 실시간 한국어 음성 인식 (STT)")
+    st.subheader("🗣️ 음성 입력 진단 패널")
 
     controller = st.session_state.controller
 
-    # 실시간 STT 엔진 상태 가져오기
-    stt_rt = None
-    if controller and hasattr(controller, '_stt_realtime'):
-        stt_rt = controller._stt_realtime
+    # 새 파이프라인 상태 가져오기
+    pipeline = None
+    pipeline_status = None
+    if controller and hasattr(controller, '_voice_stt_pipeline') and controller._voice_stt_pipeline:
+        pipeline = controller._voice_stt_pipeline
+        pipeline_status = pipeline.get_status()
 
-    if stt_rt is None:
-        # 모드 체크
-        mode = st.session_state.current_mode
+    # 모드 체크 - 음성 비활성 모드
+    mode = st.session_state.current_mode
+    if pipeline_status is None:
         if mode in ("minimal", "face"):
-            st.caption("ℹ️ voice 또는 full 모드에서 실시간 STT가 활성화됩니다.")
+            st.caption("ℹ️ voice 또는 full 모드에서 음성 인식이 활성화됩니다.")
         elif not st.session_state.get("stt_enabled", False):
             st.caption("ℹ️ 사이드바에서 STT를 켜세요.")
         else:
-            st.info("실시간 STT 엔진이 초기화되지 않았습니다. `pip install -r requirements-stt.txt`")
+            st.info("음성 파이프라인이 초기화되지 않았습니다. `pip install -r requirements-stt.txt`")
         return
 
-    # 상태 조회
-    status = stt_rt.get_status()
+    status = pipeline_status
 
-    # --- 실시간 상태 표시 ---
+    # --- Audio Stream 상태 ---
+    st.markdown("**Audio Stream**")
     col1, col2, col3, col4 = st.columns(4)
-
     with col1:
-        vad_icons = {
-            "SILENCE": "🔇",
-            "SPEECH_START": "🟡",
-            "SPEAKING": "🔴",
-            "SPEECH_END": "🟢",
-        }
-        vad_icon = vad_icons.get(status.vad_state, "⚪")
-        st.metric("VAD 상태", f"{vad_icon} {status.vad_state}")
-
+        audio_icons = {"AUDIO_RUNNING": "🟢", "AUDIO_STOPPED": "⚪", "AUDIO_STARTING": "🟡",
+                       "AUDIO_DEVICE_ERROR": "🔴", "AUDIO_READ_ERROR": "🔴"}
+        icon = audio_icons.get(status.audio_status, "⚪")
+        st.metric("Stream", f"{icon} {status.audio_status}")
     with col2:
-        if status.segment_duration_sec > 0:
-            st.metric("발화 길이", f"{status.segment_duration_sec:.1f}s")
+        st.metric("RMS", f"{status.rms:.4f}")
+    with col3:
+        st.metric("Peak", f"{status.peak:.3f}")
+    with col4:
+        st.metric("dBFS", f"{status.dbfs:.1f}")
+
+    # Audio level bar
+    if status.speech_threshold > 0:
+        level = min(1.0, status.rms / max(status.speech_threshold * 2, 0.001))
+        st.progress(level, text=f"입력 레벨 | noise_floor={status.noise_floor:.4f} | threshold={status.speech_threshold:.4f}")
+
+    # --- VAD 상태 ---
+    st.markdown("**VAD State Machine**")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        vad_icons = {"IDLE": "⚪", "POSSIBLE_SPEECH": "🟡", "SPEECH_ACTIVE": "🔴",
+                     "POSSIBLE_END": "🟠", "SPEECH_ENDED": "🟢", "SILENCE": "⚪", "NOISE_ONLY": "⚫"}
+        vad_icon = vad_icons.get(status.vad_state, "⚪")
+        st.metric("VAD", f"{vad_icon} {status.vad_state}")
+    with col2:
+        if status.segment_duration_ms > 0:
+            st.metric("발화 길이", f"{status.segment_duration_ms:.0f}ms")
         else:
             st.metric("발화 길이", "—")
-
     with col3:
-        st.metric("STT Queue", f"{status.queue_size}")
-
+        st.metric("STT Queue", f"{status.stt_queue_size}")
     with col4:
-        model_badge = "✅" if status.model_loaded else "❌"
-        st.metric("모델", f"{model_badge} {status.model_name or 'N/A'}")
+        model_badge = "✅" if status.stt_model_loaded else "❌"
+        st.metric("STT 모델", f"{model_badge} {status.stt_model_name or 'N/A'}")
 
-    # --- 오디오 레벨 ---
+    # --- STT Worker 상태 ---
+    st.markdown("**STT Worker**")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.caption(f"RMS: {status.current_rms:.4f}")
+        st.caption(f"Status: **{status.stt_status}**")
     with col2:
-        st.caption(f"Noise Floor: {status.noise_floor:.4f}")
+        st.caption(f"처리: {status.stt_total_processed}건")
     with col3:
-        st.caption(f"Threshold: {status.speech_threshold:.4f}")
+        st.caption(f"장치: {status.device_name} ({status.sample_rate}Hz)")
     with col4:
-        st.caption(f"dBFS: {status.current_dbfs:.1f}")
-
-    # 레벨 바
-    if status.speech_threshold > 0:
-        level = min(1.0, status.current_rms / max(status.speech_threshold * 2, 0.001))
-        st.progress(level, text=f"입력 레벨 (threshold={status.speech_threshold:.4f})")
-
-    # --- 스트림 / 장치 정보 ---
-    stream_icon = "🟢" if status.stream_active else "⚪"
-    worker_icon = "🟢" if status.worker_active else "⚪"
-    st.caption(
-        f"Stream: {stream_icon} {status.device_name} ({status.sample_rate}Hz) | "
-        f"Worker: {worker_icon} | "
-        f"총 세그먼트: {status.segments_total} | "
-        f"총 인식: {status.total_transcriptions}"
-    )
+        mode_badge = {"OFF": "⚪", "MONITORING": "🟡", "ACTIVE": "🔴"}.get(status.mode, "⚪")
+        st.caption(f"파이프라인: {mode_badge} {status.mode}")
 
     # --- 마지막 인식 결과 ---
     if status.last_text:
         st.success(f"📝 \"{status.last_text}\"")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             if status.last_timestamp:
                 st.caption(f"시간: {status.last_timestamp.strftime('%H:%M:%S')}")
         with col2:
             conf_str = f"{status.last_confidence:.0%}" if status.last_confidence else "N/A"
             st.caption(f"신뢰도: {conf_str}")
+        with col3:
+            st.caption(f"지연: {status.last_latency_ms:.0f}ms")
     else:
-        if status.stream_active and status.model_loaded:
+        if status.audio_status == "AUDIO_RUNNING" and status.stt_model_loaded:
             st.caption("⏳ 대기 중... (말을 하면 자동으로 인식합니다)")
-        elif not status.model_loaded:
+        elif status.audio_status != "AUDIO_RUNNING":
+            st.warning(f"⚠️ 오디오 스트림 문제: {status.audio_status}")
+        elif not status.stt_model_loaded:
             st.warning("⚠️ STT 모델 로드 실패. `pip install faster-whisper` 확인")
-        elif not status.stream_active:
-            st.caption("⚪ 스트림 비활성")
+
+    # --- 에러 표시 ---
+    if status.last_error:
+        st.error(f"마지막 오류: {status.last_error}")
 
     # --- 최근 인식 히스토리 ---
-    results = stt_rt.get_results(5)
-    if results:
-        with st.expander(f"최근 인식 기록 ({len(results)}개)", expanded=False):
-            for r in reversed(results):
-                time_str = r.timestamp.strftime('%H:%M:%S')
-                conf = f" ({r.confidence:.0%})" if r.confidence else ""
-                st.caption(f"[{time_str}] {r.text}{conf} [{r.duration_sec:.1f}s]")
+    if pipeline:
+        results = pipeline.get_stt_results(5)
+        if results:
+            with st.expander(f"최근 인식 기록 ({len(results)}개)", expanded=False):
+                for r in results:
+                    time_str = r.timestamp.strftime('%H:%M:%S')
+                    conf = f" ({r.confidence:.0%})" if r.confidence else ""
+                    status_icon = "✅" if r.is_success else "❌"
+                    st.caption(f"{status_icon} [{time_str}] {r.text}{conf} [{r.duration_sec:.1f}s / {r.latency_ms:.0f}ms]")
 
 
 # ============================================================
