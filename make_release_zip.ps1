@@ -96,6 +96,7 @@ Write-Host ""
 Write-Host "[INFO] Copying root-level files..."
 
 $RootFiles = @(
+    "START.bat",
     "README.md",
     "setup-guide.md",
     "privacy-notice.md",
