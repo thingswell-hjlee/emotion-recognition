@@ -1,9 +1,12 @@
 # requirements-stt-openai-optional.txt
 # OpenAI Whisper (선택적 fallback 엔진)
 #
+# ⚠️ 주의: 이 파일은 선택적(optional)입니다.
+# ⚠️ 기본 STT 엔진은 faster-whisper (requirements-stt.txt)를 사용합니다.
 # ⚠️ Windows 11 + Python 3.11에서 설치 실패할 수 있습니다.
 # ⚠️ faster-whisper를 사용할 수 없는 경우에만 설치하세요.
-# ⚠️ 설치 전 ffmpeg이 필요합니다: https://ffmpeg.org/download.html
+# ⚠️ 설치 전 ffmpeg이 시스템 PATH에 필요합니다: https://ffmpeg.org/download.html
+# ⚠️ Python 3.13에서는 호환성 미검증입니다.
 #
 # 설치: pip install -r requirements-stt-openai-optional.txt
 

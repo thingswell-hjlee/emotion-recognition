@@ -1,23 +1,24 @@
 # requirements-minimal.txt
 # Windows 11 안정 실행을 위한 최소 의존성
 # Python 3.11 권장 (3.9~3.11 지원)
+# ⚠️ Python 3.13은 tensorflow/DeepFace 호환 문제로 미검증입니다.
 #
 # 이 파일로 설치하면 minimal mode로 실행됩니다:
 #   pip install -r requirements-minimal.txt
 #   streamlit run ui/app.py
 
-# UI
-streamlit==1.31.0
+# UI 프레임워크
+streamlit>=1.31.0,<2.0.0
 
 # 영상 처리 (카메라 캡처, 얼굴 감지)
-opencv-python==4.9.0.80
+opencv-python>=4.9.0,<5.0.0
 
 # 수치 연산
-numpy==1.26.4
-pandas==2.2.0
+numpy>=1.26.0,<2.0.0
+pandas>=2.2.0,<3.0.0
 
-# 음성 합성 (TTS)
-pyttsx3==2.98
+# 음성 합성 (TTS, 기본 OFF)
+pyttsx3>=2.90
 
 # 유틸리티
-python-dateutil==2.8.2
+python-dateutil>=2.8.0

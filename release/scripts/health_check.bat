@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul 2>&1
+setlocal EnableDelayedExpansion
+
 echo ============================================
 echo  Thingswell Inc.
 echo  Multimodal Emotion Recognition ^& Korean STT Monitor
@@ -9,6 +11,18 @@ echo  Contact: hjlee@thingswell.co.kr
 echo ============================================
 echo.
 echo [INFO] Running environment health check...
+echo.
+
+REM Navigate to project root
+pushd "%~dp0..\.."
+
+REM Activate .venv if exists
+if exist ".venv\Scripts\activate.bat" (
+    call ".venv\Scripts\activate.bat"
+    echo [INFO] Virtual environment: .venv (activated)
+) else (
+    echo [INFO] Virtual environment: not found (using system Python)
+)
 echo.
 
 set PASS=0
@@ -37,7 +51,7 @@ if errorlevel 1 (
 REM Check streamlit
 python -c "import streamlit" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] streamlit not installed
+    echo [FAIL] streamlit not installed (required)
     set /a FAIL+=1
 ) else (
     echo [PASS] streamlit installed
@@ -47,74 +61,82 @@ if errorlevel 1 (
 REM Check opencv
 python -c "import cv2" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] opencv (cv2) not installed
+    echo [FAIL] opencv (cv2) not installed (required)
     set /a FAIL+=1
 ) else (
     echo [PASS] opencv (cv2) installed
     set /a PASS+=1
 )
 
+REM Check numpy
+python -c "import numpy" >nul 2>&1
+if errorlevel 1 (
+    echo [FAIL] numpy not installed (required)
+    set /a FAIL+=1
+) else (
+    echo [PASS] numpy installed
+    set /a PASS+=1
+)
+
+echo.
+echo --- Optional modules (face mode) ---
+
 REM Check deepface
 python -c "import deepface" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] deepface not installed
+    echo [SKIP] deepface not installed (face mode disabled)
     set /a FAIL+=1
 ) else (
     echo [PASS] deepface installed
     set /a PASS+=1
 )
 
-REM Check pyaudio
-python -c "import pyaudio" >nul 2>&1
+echo.
+echo --- Optional modules (voice mode) ---
+
+REM Check sounddevice
+python -c "import sounddevice" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] pyaudio not installed
+    echo [SKIP] sounddevice not installed (voice mode disabled)
     set /a FAIL+=1
 ) else (
-    echo [PASS] pyaudio installed
+    echo [PASS] sounddevice installed
     set /a PASS+=1
 )
 
-REM Check webrtcvad
-python -c "import webrtcvad" >nul 2>&1
+REM Check librosa
+python -c "import librosa" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] webrtcvad not installed
+    echo [SKIP] librosa not installed (voice mode disabled)
     set /a FAIL+=1
 ) else (
-    echo [PASS] webrtcvad installed
+    echo [PASS] librosa installed
     set /a PASS+=1
 )
+
+echo.
+echo --- Optional modules (STT) ---
 
 REM Check faster-whisper
 python -c "import faster_whisper" >nul 2>&1
 if errorlevel 1 (
-    echo [FAIL] faster-whisper not installed
+    echo [SKIP] faster-whisper not installed (STT disabled)
     set /a FAIL+=1
 ) else (
     echo [PASS] faster-whisper installed
     set /a PASS+=1
 )
 
-REM Check torch
-python -c "import torch" >nul 2>&1
-if errorlevel 1 (
-    echo [FAIL] torch not installed
-    set /a FAIL+=1
-) else (
-    echo [PASS] torch installed
-    set /a PASS+=1
-)
-
 echo.
 echo ============================================
 echo  Health Check Results:
-echo  PASS: %PASS%  /  FAIL: %FAIL%
+echo  PASS: %PASS%  /  FAIL or SKIP: %FAIL%
 echo ============================================
+echo.
+echo  [INFO] SKIP items are optional modules.
+echo         minimal mode runs with streamlit + opencv + numpy only.
 
-if %FAIL% GTR 0 (
-    echo.
-    echo [WARNING] Some modules are missing.
-    echo           Run install_all.bat or individual install scripts.
-)
-
+popd
 echo.
 pause
+exit /b 0

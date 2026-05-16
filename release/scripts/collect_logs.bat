@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul 2>&1
+setlocal EnableDelayedExpansion
+
 echo ============================================
 echo  Thingswell Inc.
 echo  Multimodal Emotion Recognition ^& Korean STT Monitor
@@ -14,13 +16,18 @@ echo.
 REM Navigate to project root
 pushd "%~dp0..\.."
 
+REM Activate .venv if exists
+if exist ".venv\Scripts\activate.bat" (
+    call ".venv\Scripts\activate.bat"
+)
+
 REM Create test_report directory
 if not exist "test_report" mkdir test_report
 
 REM Get current date and time
-for /f "tokens=*" %%i in ('date /t') do set CURRENT_DATE=%%i
-for /f "tokens=*" %%i in ('time /t') do set CURRENT_TIME=%%i
-for /f "tokens=*" %%i in ('hostname') do set PC_NAME=%%i
+for /f "tokens=*" %%i in ('date /t') do set "CURRENT_DATE=%%i"
+for /f "tokens=*" %%i in ('time /t') do set "CURRENT_TIME=%%i"
+for /f "tokens=*" %%i in ('hostname') do set "PC_NAME=%%i"
 
 REM ──────────────────────────────────────
 REM Generate system_info.txt
@@ -49,16 +56,16 @@ echo [INFO] Generating system_info.txt...
     echo test_time: %CURRENT_TIME%
     echo.
     echo [Python Environment]
-) > test_report\system_info.txt
+) > "test_report\system_info.txt"
 
-python --version >> test_report\system_info.txt 2>&1
-echo. >> test_report\system_info.txt
-echo [pip freeze] >> test_report\system_info.txt
-pip freeze >> test_report\system_info.txt 2>&1
+python --version >> "test_report\system_info.txt" 2>&1
+echo. >> "test_report\system_info.txt"
+echo [pip freeze] >> "test_report\system_info.txt"
+pip freeze >> "test_report\system_info.txt" 2>&1
 
-echo. >> test_report\system_info.txt
-echo [OS Information] >> test_report\system_info.txt
-systeminfo | findstr /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory" >> test_report\system_info.txt 2>&1
+echo. >> "test_report\system_info.txt"
+echo [OS Information] >> "test_report\system_info.txt"
+systeminfo | findstr /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory" >> "test_report\system_info.txt" 2>&1
 
 echo [DONE] system_info.txt created.
 
@@ -85,7 +92,7 @@ if not exist "test_report\performance_metrics.csv" (
         echo # Copyright (c) 2026 Thingswell Inc. All rights reserved.
         echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
         echo timestamp,module,metric_name,metric_value,unit,profile
-    ) > test_report\performance_metrics.csv
+    ) > "test_report\performance_metrics.csv"
     echo [DONE] performance_metrics.csv created with header.
 ) else (
     echo [INFO] performance_metrics.csv already exists, skipping header.
@@ -103,7 +110,7 @@ if not exist "test_report\reliability_events.csv" (
         echo # Copyright (c) 2026 Thingswell Inc. All rights reserved.
         echo # PC: %PC_NAME% / Date: %CURRENT_DATE% %CURRENT_TIME%
         echo timestamp,event_type,module,description,severity
-    ) > test_report\reliability_events.csv
+    ) > "test_report\reliability_events.csv"
     echo [DONE] reliability_events.csv created with header.
 ) else (
     echo [INFO] reliability_events.csv already exists, skipping header.
@@ -112,6 +119,7 @@ if not exist "test_report\reliability_events.csv" (
 echo.
 echo ============================================
 echo  [DONE] Log collection complete.
+echo.
 echo  Output: test_report\
 echo  Files:
 echo    - system_info.txt
@@ -126,3 +134,4 @@ echo.
 
 popd
 pause
+exit /b 0

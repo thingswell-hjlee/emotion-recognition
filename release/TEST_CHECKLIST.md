@@ -26,10 +26,13 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 
 ## 설치 테스트 / Installation Tests
 
-- [ ] Python 3.11+ 설치 확인
-- [ ] `install_all.bat` 정상 실행
-- [ ] `health_check.bat` 모든 항목 PASS
-- [ ] 앱 실행 (`run_app.bat`) 정상
+- [ ] Python 3.11+ 설치 확인 (`python --version`)
+- [ ] `install_all.bat` 정상 실행 (에러 없이 완료)
+- [ ] `.venv` 폴더 자동 생성됨
+- [ ] `health_check.bat` — streamlit PASS
+- [ ] `health_check.bat` — opencv PASS
+- [ ] `health_check.bat` — numpy PASS
+- [ ] 앱 실행 (`run_app.bat`) 정상 — 브라우저 열림
 
 ---
 
@@ -38,7 +41,7 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 ### 카메라 / Camera
 - [ ] 카메라 미리보기 정상 표시
 - [ ] 얼굴 인식 박스 표시
-- [ ] 카메라 없을 때 적절한 에러 메시지
+- [ ] 카메라 없을 때 적절한 에러 메시지 (앱 중단 없음)
 
 ### 얼굴 감정 인식 / Face Emotion
 - [ ] Happy 감정 인식
@@ -52,7 +55,7 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 - [ ] 마이크 접근 정상
 - [ ] 말할 때 VAD 활성화 표시
 - [ ] 조용할 때 VAD 비활성화
-- [ ] 마이크 없을 때 적절한 에러 메시지
+- [ ] 마이크 없을 때 적절한 에러 메시지 (앱 중단 없음)
 
 ### 한국어 STT / Korean Speech-to-Text
 - [ ] STT 모델 로드 완료 (첫 실행 시 다운로드)
@@ -68,7 +71,7 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 
 ## 성능 테스트 / Performance Tests
 
-### Balanced Mode
+### Balanced Mode (Standard)
 - [ ] CPU 사용률 확인 (기대: 중간)
 - [ ] 응답 지연 확인
 - [ ] FPS 확인
@@ -123,6 +126,78 @@ Thingswell Inc.의 사전 서면 승인 없이 무단 복제, 재배포, 역설�
 | 1 | | | |
 | 2 | | | |
 | 3 | | | |
+
+---
+
+---
+
+## POC 완료 체크리스트 / POC Completion Checklist
+
+> 이 섹션은 개발팀이 beta 릴리즈 전 최종 확인하는 항목입니다.
+
+### 배포 패키지 / Release Package
+
+- [ ] `make_release_zip.ps1` 실행 가능 (PowerShell)
+- [ ] ZIP 파일명에 "thingswell" 포함: `emotion-recognition-beta-win64-v0.1.0-thingswell.zip`
+- [ ] ZIP 내 `version.py` 포함
+- [ ] ZIP 내 `NOTICE.md` 포함
+- [ ] ZIP 내 `LICENSE-THINGSWELL.md` 포함
+- [ ] ZIP 내 `privacy-notice.md` 포함
+- [ ] ZIP 내 `requirements-stt-openai-optional.txt` 포함
+- [ ] ZIP 내 `release/scripts/` (8개 BAT 파일) 포함
+
+### 앱 UI / Application UI
+
+- [ ] 앱 실행 성공 (`streamlit run ui/app.py`)
+- [ ] Thingswell footer 표시 (하단 고정, 다크모드 호환)
+- [ ] Sidebar "제작 정보 / About" 패널 표시
+- [ ] Debug/Test Mode에서 Build Info expander 표시
+- [ ] 앱 상단 제품명 표시
+
+### 기능 모드 진입 / Mode Access
+
+- [ ] minimal mode 진입 — 더미 감정 표시
+- [ ] face mode 진입 — 카메라 preview 동작
+- [ ] voice mode 진입 — 마이크 메트릭 표시
+- [ ] full mode 진입 — 전체 기능 통합
+- [ ] STT 상태 표시 (model loaded / queue size)
+
+### 스크립트 / Scripts
+
+- [ ] `install_all.bat` — .venv 생성 후 전체 설치
+- [ ] `health_check.bat` — PASS/FAIL 결과 표시
+- [ ] `run_app.bat` — Streamlit 앱 실행
+- [ ] `collect_logs.bat` — test_report/ 폴더 생성
+- [ ] `collect_logs.bat` — system_info.txt 생성
+- [ ] `collect_logs.bat` — test_report_summary.json 생성
+
+### 문서 / Documentation
+
+- [ ] README.md — Thingswell 저작권 헤더/푸터
+- [ ] setup-guide.md — 설치 가이드 완비
+- [ ] privacy-notice.md — 개인정보 처리 안내
+- [ ] NOTICE.md — 법적 고지
+- [ ] LICENSE-THINGSWELL.md — Application License Notice
+- [ ] release/RELEASE_NOTES.md — 릴리즈 노트
+- [ ] release/README_TESTER.md — 비개발자 테스터 가이드
+- [ ] release/TEST_CHECKLIST.md — 이 문서
+- [ ] release/TROUBLESHOOTING.md — 문제 해결 가이드
+
+### GitHub / Repository
+
+- [ ] PR #1 feature/project-documentation — merge 준비 완료
+- [ ] 모든 파일 커밋됨
+- [ ] GitHub Release 업로드 준비 (ZIP artifact)
+- [ ] .github/workflows/build-windows-beta.yml 존재
+
+### 버전 일관성 / Version Consistency
+
+- [ ] version.py VERSION == "0.1.0"
+- [ ] BAT 파일 배너 "v0.1.0" 표시
+- [ ] make_release_zip.ps1 $Version == "0.1.0"
+- [ ] RELEASE_NOTES.md "v0.1.0" 명시
+- [ ] README.md "v0.1.0" 표시
+- [ ] UI footer "v0.1.0" 표시
 
 ---
 

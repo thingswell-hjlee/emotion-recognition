@@ -1,0 +1,90 @@
+# ============================================
+# Thingswell Inc.
+# Multimodal Emotion Recognition & Korean STT Monitor
+# Beta Test Release - Windows Build Workflow
+# ============================================
+#
+# This workflow builds the Windows beta release ZIP package.
+# Triggered manually (workflow_dispatch) or on push to feature/project-documentation.
+#
+
+name: Build Windows Beta Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: false
+        default: '0.1.0'
+  push:
+    branches:
+      - feature/project-documentation
+    paths:
+      - 'make_release_zip.ps1'
+      - 'version.py'
+      - 'release/**'
+
+jobs:
+  build-release-package:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Display environment info
+        run: |
+          python --version
+          pip --version
+          echo "Working directory: ${{ github.workspace }}"
+          echo "Version: ${{ github.event.inputs.version || '0.1.0' }}"
+
+      - name: Verify version.py exists
+        run: |
+          if (Test-Path "version.py") {
+            Write-Host "[OK] version.py found"
+            python -c "from version import *; print(f'App: {APP_NAME}'); print(f'Version: {VERSION}'); print(f'Company: {COMPANY_NAME}')"
+          } else {
+            Write-Host "[ERROR] version.py not found"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Build release ZIP
+        run: |
+          Write-Host "Building release package..."
+          & .\make_release_zip.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERROR] make_release_zip.ps1 failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Verify ZIP created
+        run: |
+          $zipFile = "dist\emotion-recognition-beta-win64-v0.1.0-thingswell.zip"
+          if (Test-Path $zipFile) {
+            $size = (Get-Item $zipFile).Length
+            $sizeMB = [math]::Round($size / 1MB, 2)
+            Write-Host "[OK] ZIP created: $zipFile ($sizeMB MB)"
+          } else {
+            Write-Host "[ERROR] ZIP file not found at: $zipFile"
+            Write-Host "Contents of dist/:"
+            Get-ChildItem -Path "dist" -Recurse -ErrorAction SilentlyContinue | Format-Table Name, Length
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: emotion-recognition-beta-win64-v0.1.0-thingswell
+          path: dist/emotion-recognition-beta-win64-v0.1.0-thingswell.zip
+          if-no-files-found: error
+          retention-days: 30
