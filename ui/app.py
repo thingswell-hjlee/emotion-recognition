@@ -114,18 +114,19 @@ def safe_mode_switch(new_mode: str):
     안전한 모드 전환:
     1. 기존 분석 stop
     2. camera release, microphone close
-    3. controller를 None으로 리셋
-    4. 새 모드로 session_state 업데이트
+    3. sleep(0.5) - 리소스 해제 대기
+    4. controller를 None으로 리셋
+    5. 새 모드로 session_state 업데이트
     """
     controller = st.session_state.controller
 
     # 1. 기존 분석 중단 및 리소스 해제
     if controller is not None:
         try:
-            controller.stop()
             controller.cleanup()
         except Exception:
             pass
+        time.sleep(0.5)  # 리소스 해제 대기
         st.session_state.controller = None
 
     # 2. 상태 업데이트
@@ -212,6 +213,17 @@ def hot_update_slider(controller, key: str, value):
 # MAIN UI
 # ============================================================
 
+def sync_state_from_controller():
+    """
+    핵심 수정: controller.state → st.session_state.app_state 동기화.
+    Streamlit rerun 시마다 호출하여 최신 분석 결과를 UI에 반영합니다.
+    """
+    controller = st.session_state.get("controller")
+    if controller is not None and hasattr(controller, 'state'):
+        st.session_state.app_state = controller.state
+        st.session_state.is_running = controller.state.is_running
+
+
 def main():
     st.set_page_config(
         page_title="Emotion Monitor",
@@ -220,6 +232,10 @@ def main():
     )
 
     init_session_state()
+
+    # ★ 핵심: 매 rerun마다 controller 상태를 UI로 동기화
+    sync_state_from_controller()
+
     state: AppState = st.session_state.app_state
 
     # === 헤더 ===
@@ -482,7 +498,9 @@ def render_results(state: AppState):
             emoji = EMOTION_EMOJI.get(state.current_emotion.dominant, "❓")
             conf = state.current_emotion.confidence
             conf_label = f"{conf:.0%}"
-            if conf < st.session_state.get("_conf_threshold", 0.6):
+
+            # low confidence도 표시 (숨기지 않음)
+            if conf < 0.6:
                 conf_label += " ⚠️ low confidence"
 
             st.metric(
@@ -498,7 +516,18 @@ def render_results(state: AppState):
             elif src == "smoothed":
                 st.caption("📊 이동평균 적용")
         else:
-            st.info("분석 대기 중...")
+            # 결과 없을 때 이유 표시
+            face_status = state.face_status
+            if face_status == "NO_FRAME":
+                st.warning("📷 카메라 프레임을 읽을 수 없습니다")
+            elif face_status == "NO_FACE":
+                st.info("👤 얼굴이 감지되지 않습니다. 카메라를 정면으로 향하세요.")
+            elif face_status == "DEEPFACE_ERROR":
+                st.warning("🧠 표정 분석 실패. DeepFace 모델 문제일 수 있습니다.")
+            elif "오류" in face_status:
+                st.error(f"❌ {face_status}")
+            else:
+                st.info(f"분석 대기 중... (상태: {face_status})")
 
         st.subheader("LSTM 예측")
         if state.predicted_emotion:

@@ -62,6 +62,7 @@ class EmotionController:
         # 스레드
         self._face_thread: Optional[threading.Thread] = None
         self._running = False
+        self._cleaned_up = False
         self._frame_count = 0
         self._lock = threading.Lock()
 
@@ -233,7 +234,10 @@ class EmotionController:
         self._notify_state()
 
     def stop(self):
-        """분석 파이프라인 정지"""
+        """분석 파이프라인 정지 (idempotent: 여러 번 호출해도 안전)"""
+        if not self._running:
+            return  # 이미 정지됨 - 중복 호출 방지
+
         self._running = False
         self.state.is_running = False
 
@@ -255,7 +259,10 @@ class EmotionController:
         self._notify_state()
 
     def cleanup(self):
-        """모든 리소스 해제"""
+        """모든 리소스 해제 (idempotent: 여러 번 호출해도 안전)"""
+        if self._cleaned_up:
+            return  # 이미 cleanup됨 - 중복 호출 방지
+
         self.stop()
         if self._webcam:
             try:
@@ -269,6 +276,7 @@ class EmotionController:
             except Exception:
                 pass
             self._microphone = None
+        self._cleaned_up = True
         self.logger.info("리소스 해제 완료")
 
     # ================================================================
@@ -336,9 +344,13 @@ class EmotionController:
     # ================================================================
 
     def _face_analysis_loop(self):
-        """표정 분석 루프 (별도 스레드)"""
+        """표정 분석 루프 (별도 스레드) - 상세 debug 로그 포함"""
         retry_count = 0
         cpu_saver_sleep = 0.05 if self.config.cpu_saver else 0.02
+        analysis_count = 0
+
+        self.logger.info("[LOOP] 표정 분석 루프 시작")
+        self.state.add_log("🔄 분석 루프 시작됨")
 
         while self._running and self.state.camera_active:
             try:
@@ -346,7 +358,8 @@ class EmotionController:
                 if not success:
                     retry_count += 1
                     if retry_count >= self.config.camera_retry_count:
-                        self.state.face_status = "프레임 읽기 실패"
+                        self.state.face_status = "NO_FRAME"
+                        self.state.add_log("⚠️ 프레임 읽기 실패 (NO_FRAME)")
                         time.sleep(1.0)
                         retry_count = 0
                     time.sleep(0.1)
@@ -355,7 +368,7 @@ class EmotionController:
                 retry_count = 0
                 self._frame_count += 1
 
-                # 프레임 스킵 (analysis_skip_frames 마다 1회만 분석)
+                # 프레임 스킵
                 if self._frame_count % self.config.analysis_skip_frames != 0:
                     time.sleep(cpu_saver_sleep)
                     continue
@@ -363,7 +376,10 @@ class EmotionController:
                 # 얼굴 감지
                 faces = self._webcam.detect_faces(frame)
                 if not faces:
-                    self.state.face_status = "얼굴 미감지"
+                    self.state.face_status = "NO_FACE"
+                    # 주기적으로 로그 출력 (매번은 너무 많음)
+                    if self._frame_count % (self.config.analysis_skip_frames * 10) == 0:
+                        self.state.add_log("👤 얼굴 미감지 (NO_FACE)")
                     time.sleep(cpu_saver_sleep)
                     continue
 
@@ -371,6 +387,7 @@ class EmotionController:
                 largest = self._webcam.get_largest_face(faces)
                 face_img = self._webcam.crop_face(frame, largest)
                 if face_img is None:
+                    self.state.face_status = "CROP_FAILED"
                     continue
 
                 # 표정 분류
@@ -379,25 +396,43 @@ class EmotionController:
                     face_result = self._face_classifier.classify(face_img)
 
                 if face_result is None:
+                    self.state.face_status = "DEEPFACE_ERROR"
+                    self.state.add_log("⚠️ 분류 실패 (DEEPFACE_ERROR)")
                     continue
 
-                # 결과 smoothing 적용
+                analysis_count += 1
+
+                # 결과 처리 (smoothing 적용)
                 with self._lock:
                     self._smoother.add(face_result)
                     smoothed = self._smoother.get_smoothed()
 
-                    if smoothed:
-                        self.state.current_emotion = smoothed
-                        self.state.face_status = "사용 중"
-                        if self._averager:
-                            self._averager.add_result(smoothed)
+                    # ★ smoothed가 None이어도 raw result는 표시
+                    display_result = smoothed if smoothed else face_result
+                    self.state.current_emotion = display_result
+                    self.state.face_status = f"분석 중 ({display_result.dominant} {display_result.confidence:.0%})"
+
+                    if self._averager:
+                        self._averager.add_result(display_result)
+
+                    # 첫 결과 및 주기적 debug 로그
+                    if analysis_count == 1 or analysis_count % 5 == 0:
+                        self.state.add_log(
+                            f"📊 분석 #{analysis_count}: {display_result.dominant} "
+                            f"({display_result.confidence:.0%}) [{display_result.source}]"
+                        )
 
                 self._notify_state()
                 time.sleep(cpu_saver_sleep)
 
             except Exception as e:
                 self.logger.error(f"표정 분석 루프 오류: {e}")
+                self.state.face_status = f"오류: {e}"
+                self.state.add_log(f"❌ 루프 오류: {e}")
                 time.sleep(0.5)
+
+        self.logger.info(f"[LOOP] 표정 분석 루프 종료 (분석 횟수: {analysis_count})")
+        self.state.add_log(f"🛑 분석 루프 종료 (총 {analysis_count}회 분석)")
 
     def _on_cycle_complete(self):
         """주기 완료 콜백"""

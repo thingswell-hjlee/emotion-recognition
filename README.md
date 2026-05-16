@@ -164,3 +164,19 @@ emotion-recognition/
 ## 면책 사항
 
 > 감정 분석 결과는 참고용이며, 의학적·심리학적 진단이 아닙니다.
+
+## Troubleshooting: 앱은 실행되지만 감정 결과가 나오지 않는 경우
+
+| # | 점검 항목 | 확인 방법 |
+|---|-----------|-----------|
+| 1 | face mode로 먼저 테스트 | 사이드바에서 모드를 "Face"로 변경 후 시작 |
+| 2 | 카메라 영상 확인 | face_status가 "NO_FRAME"이면 카메라 권한/인덱스 확인 |
+| 3 | 조명/얼굴 위치 | face_status가 "NO_FACE"이면 밝은 곳에서 정면 응시 |
+| 4 | Standard 프로파일 사용 | Low Power는 분석 간격이 길어 결과 느림 → Standard로 변경 |
+| 5 | confidence threshold 확인 | low confidence 표시되면 DeepFace가 동작 중인 것 (정상) |
+| 6 | 로그 패널 확인 | "📊 분석 #1" 로그가 보이면 파이프라인 정상 |
+| 7 | DeepFace 설치 확인 | `pip install deepface` 후 face mode 재시도 |
+| 8 | minimal mode 테스트 | minimal은 더미 결과를 반환하므로 반드시 결과가 표시됨 |
+
+**로그에 "분석 루프 시작됨"이 없으면**: 카메라 초기화 실패. 카메라 인덱스를 0→1→2로 변경하세요.
+**로그에 "NO_FACE"만 반복되면**: 조명을 밝게 하고, 카메라 정면에서 30~60cm 거리를 유지하세요.
